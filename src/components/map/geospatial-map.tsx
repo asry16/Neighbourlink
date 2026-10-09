@@ -7,37 +7,30 @@ import {
   Layers,
   Compass,
   Navigation,
-  ZoomIn,
-  ZoomOut,
   RotateCcw,
-  Eye,
+  RotateCw,
   AlertTriangle,
-  FileText,
-  LifeBuoy,
-  Building2,
-  TrendingUp,
-  MapPin,
-  CheckCircle,
-  HelpCircle,
-  Key,
-  ExternalLink,
-  X,
-  Check,
+  Plus,
+  Minus,
   Maximize2,
+  Map as MapIcon,
+  Satellite as SatelliteIcon,
 } from "lucide-react";
-import { getMapStyle, LIGHT_MAP_STYLE, DARK_MAP_STYLE } from "@/lib/map-styles";
+import { createPortal } from "react-dom";
+import { useDismiss } from "@/lib/use-dismiss";
+import { getMapStyle, getMapTilerKey, LIGHT_MAP_STYLE, DARK_MAP_STYLE } from "@/lib/map-styles";
+import { useMapApiKeyOverride } from "@/lib/map-key";
+import { applyMapEnhancements, type MapCapabilities } from "./map-enhancements";
 import {
   INITIAL_INCIDENTS,
   INITIAL_OFFICIAL_HAZARDS,
   INITIAL_RISK_ESTIMATES,
-  INITIAL_SOS_REQUESTS,
   INITIAL_HELP_CENTRES,
-  type DemoIncident,
 } from "@/lib/demo-data";
 import { useDemo, type LayerFilters } from "@/context/demo-context";
 import { humanize } from "@/components/ui/primitives";
-import { HAZARD_TONE, INCIDENT_TONE, RISK_TONE, SOS_CATEGORY_LABEL } from "@/lib/status";
-import { esc, labelHTML, pinHTML, popupHTML, sosAreaHTML, sosPinHTML, userLocationHTML } from "./marker-html";
+import { HAZARD_TONE, INCIDENT_TONE, RISK_TONE, SOS_CATEGORY_LABEL, formatDateTime } from "@/lib/status";
+import { esc, labelHTML, manualLocationHTML, pinHTML, popupHTML, sosAreaHTML, sosPinHTML, userLocationHTML } from "./marker-html";
 import { formatAccuracy } from "@/lib/use-live-location";
 
 const INCIDENT_PIN_BG: Record<string, string> = {
@@ -60,17 +53,21 @@ function sizeAccuracyRing(el: HTMLElement, zoom: number) {
   ring.style.display = diameter < 24 ? "none" : "";
 }
 
+/** Comfortable 3D perspective. */
+const PITCH_3D = 58;
+
 const MAP_LAYERS: {
   key: keyof LayerFilters;
   label: string;
   short: string;
   dot: string;
+  kind: string;
 }[] = [
-  { key: "officialHazards", label: "Official hazards", short: "Official", dot: "bg-orange-500" },
-  { key: "riskEstimates", label: "Flood-risk estimates", short: "Flood risk", dot: "bg-indigo-500" },
-  { key: "communityReports", label: "Community reports", short: "Reports", dot: "bg-sky-500" },
-  { key: "sosAreas", label: "SOS areas", short: "SOS", dot: "bg-red-500" },
-  { key: "helpCentres", label: "Help centres", short: "Help", dot: "bg-emerald-500" },
+  { key: "officialHazards", label: "Official warnings", short: "Official", dot: "bg-orange-500", kind: "Issued by government agencies" },
+  { key: "riskEstimates", label: "Flood risk", short: "Flood risk (experimental)", dot: "bg-indigo-500", kind: "Experimental estimate, not a warning" },
+  { key: "communityReports", label: "Community reports", short: "Reports", dot: "bg-sky-500", kind: "Resident observations" },
+  { key: "sosAreas", label: "SOS requests", short: "SOS", dot: "bg-red-500", kind: "Approximate areas for the public" },
+  { key: "helpCentres", label: "Help centres", short: "Help centres", dot: "bg-emerald-500", kind: "Participating shelters and aid" },
 ];
 
 interface GeospatialMapProps {
@@ -102,20 +99,32 @@ export function GeospatialMap({
     locationError,
     startLiveLocation,
     stopLiveLocation,
+    basemapType,
+    satelliteLabels,
+    manualLocation,
+    setManualLocation,
+    mapFocus,
   } = useDemo();
+  const isDark = resolvedTheme === "dark";
+  const mapApiKey = useMapApiKeyOverride();
+
   const userMarkerRef = useRef<maplibregl.Marker | null>(null);
-  // Follow mode: camera tracks the user until they pan the map themselves.
-  const [following, setFollowing] = useState(false);
-  const hasCenteredRef = useRef(false);
+  const manualMarkerRef = useRef<maplibregl.Marker | null>(null);
+  // Follow mode: "paused" when the user pans away; they can resume explicitly.
+  const [follow, setFollow] = useState<"off" | "on" | "paused">("off");
+  const centerOnNextFixRef = useRef(false);
+  const [pickingLocation, setPickingLocation] = useState(false);
+  const pickingRef = useRef(false);
 
   const [mapLoaded, setMapLoaded] = useState(false);
   const [webGlSupported, setWebGlSupported] = useState(true);
   const [bearing, setBearing] = useState(0);
-  const [pitch, setPitch] = useState(0);
-  const [layersMenuOpen, setLayersMenuOpen] = useState(false);
-  const [mapApiKey, setMapApiKey] = useState<string>("");
-  const [apiKeyModalOpen, setApiKeyModalOpen] = useState(false);
-  const [tempKeyInput, setTempKeyInput] = useState("");
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [capabilities, setCapabilities] = useState<MapCapabilities>({ buildings: false, terrain: false });
+  const keyRejectedRef = useRef(false);
+  const cameraSnapshotRef = useRef<maplibregl.JumpToOptions | null>(null);
+  const appliedStyleRef = useRef<string | null>(null);
+  const pendingFlyRef = useRef<maplibregl.FlyToOptions | null>(null);
   const [visibleIncidentCount, setVisibleIncidentCount] = useState<number | null>(null);
 
   // Compute visible incidents within current map viewport
@@ -192,17 +201,6 @@ export function GeospatialMap({
     });
   }, [layerFilters, incidents, sosRequests]);
 
-  // Load saved API key from localStorage
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const savedKey = localStorage.getItem("neighbourlink_map_api_key");
-      if (savedKey) {
-        setMapApiKey(savedKey);
-        setTempKeyInput(savedKey);
-      }
-    }
-  }, []);
-
   // Check WebGL support
   useEffect(() => {
     try {
@@ -217,7 +215,54 @@ export function GeospatialMap({
     }
   }, []);
 
-  // Initialize Map
+  // (Re)apply buildings / terrain / label visibility for the current options.
+  // Called from the persistent `style.load` handler and when options change.
+  const enhanceRef = useRef<() => void>(() => {});
+  // True between `style.load` and the next `setStyle()`. (isStyleLoaded() also
+  // waits for tiles, so it is still false while style.load is firing.)
+  const styleReadyRef = useRef(false);
+  const enhance = () => {
+    const m = map.current;
+    if (!m || !styleReadyRef.current) return;
+    try {
+      setCapabilities(
+        applyMapEnhancements(m, {
+          is3D,
+          isDark,
+          basemap: basemapType,
+          showLabels: satelliteLabels,
+          mapTilerKey: keyRejectedRef.current ? null : getMapTilerKey(mapApiKey),
+        })
+      );
+    } catch (err) {
+      console.warn("Map enhancement skipped:", err);
+    }
+  };
+
+  // Fly once the map is visible (it is hidden, 0×0, while other tabs show).
+  const flyWhenVisible = useCallback((opts: maplibregl.FlyToOptions) => {
+    const m = map.current;
+    if (m && m.getContainer().clientWidth > 0) {
+      pendingFlyRef.current = null;
+      m.flyTo({ essential: true, ...opts });
+    } else {
+      pendingFlyRef.current = opts;
+    }
+  }, []);
+
+  const isDarkRef = useRef(isDark);
+  const updateVisibleCountRef = useRef(updateVisibleCount);
+
+  // Keep refs used by long-lived map event handlers current. Declared before
+  // the effects that call them so it runs first each commit.
+  useEffect(() => {
+    pickingRef.current = pickingLocation;
+    isDarkRef.current = isDark;
+    updateVisibleCountRef.current = updateVisibleCount;
+    enhanceRef.current = enhance;
+  });
+
+  // Initialize Map (once; the component stays mounted across tabs)
   useEffect(() => {
     if (!mapContainer.current || map.current || !webGlSupported) return;
 
@@ -229,189 +274,206 @@ export function GeospatialMap({
       console.warn("MapLibre workerUrl setup note:", e);
     }
 
-    const isDark = resolvedTheme === "dark";
-    const initialStyle = getMapStyle(isDark, mapApiKey);
+    const initialStyle = getMapStyle(isDark, mapApiKey, basemapType);
+    appliedStyleRef.current = `${basemapType}|${isDark}|${mapApiKey}`;
 
+    let resizeObserver: ResizeObserver | null = null;
     try {
       const m = new maplibregl.Map({
         container: mapContainer.current,
         style: initialStyle,
         center: [currentLocality.lng, currentLocality.lat],
         zoom: currentLocality.zoom,
-        pitch: is3D ? 55 : 0,
-        bearing: is3D ? -20 : 0,
+        pitch: is3D ? PITCH_3D : 0,
+        maxPitch: 70,
         attributionControl: false,
       });
 
-      // Defensive fallback if remote custom style fails (e.g. invalid key or network error)
+      // If the key is rejected, fall back to open tiles and stop requesting
+      // MapTiler terrain with it.
       m.on("error", (e) => {
         const errorMsg = e?.error?.message || "";
-        if (
-          errorMsg.includes("403") ||
-          errorMsg.includes("401") ||
-          errorMsg.includes("Forbidden") ||
-          errorMsg.includes("Unauthorized")
-        ) {
-          console.warn("Custom map style access error. Reverting to local CARTO fallback:", errorMsg);
-          const fallbackStyle = resolvedTheme === "dark" ? DARK_MAP_STYLE : LIGHT_MAP_STYLE;
-          m.setStyle(fallbackStyle);
+        if (/40[13]|Forbidden|Unauthorized/.test(errorMsg) && !keyRejectedRef.current) {
+          console.warn("Map provider rejected the key; using open fallback tiles:", errorMsg);
+          keyRejectedRef.current = true;
+          styleReadyRef.current = false;
+          m.setStyle(isDarkRef.current ? DARK_MAP_STYLE : LIGHT_MAP_STYLE);
         }
       });
 
-      // Add default attribution control at bottom right
       // Tile sources carry their own attribution; start collapsed so it
       // doesn't cover the map on small screens.
-      const attribution = new maplibregl.AttributionControl({ compact: true });
-      m.addControl(attribution, "bottom-right");
+      m.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
       m.once("load", () =>
         m.getContainer()
           .querySelector(".maplibregl-ctrl-attrib")
           ?.classList.remove("maplibregl-compact-show")
       );
 
+      // Single persistent handler for every style (initial, theme, basemap,
+      // fallback): restore the camera snapshot, then re-add custom layers.
+      m.on("style.load", () => {
+        styleReadyRef.current = true;
+        if (cameraSnapshotRef.current) {
+          m.jumpTo(cameraSnapshotRef.current);
+          cameraSnapshotRef.current = null;
+        }
+        enhanceRef.current();
+      });
+
       m.on("load", () => {
         setMapLoaded(true);
-        const curPitch = Math.round(m.getPitch());
-        const curBearing = Math.round(m.getBearing());
-        setPitch(curPitch);
-        setBearing(curBearing);
-        setIs3D(curPitch >= 20);
+        setBearing(Math.round(m.getBearing()));
+        setIs3D(m.getPitch() >= 20);
         updateVisibleCount();
       });
 
-      m.on("rotate", () => {
-        setBearing(Math.round(m.getBearing()));
-      });
-
-      m.on("pitch", () => {
-        setPitch(Math.round(m.getPitch()));
-      });
-
-      m.on("pitchend", () => {
-        const curPitch = Math.round(m.getPitch());
-        setPitch(curPitch);
-        setIs3D(curPitch >= 20);
-      });
-
-      m.on("move", () => {
-        setBearing(Math.round(m.getBearing()));
-        setPitch(Math.round(m.getPitch()));
-      });
-
-      m.on("moveend", () => {
-        updateVisibleCount();
-      });
+      m.on("rotate", () => setBearing(Math.round(m.getBearing())));
+      // Perspective state follows the real camera (incl. two-finger tilt).
+      m.on("pitchend", () => setIs3D(m.getPitch() >= 20));
+      m.on("moveend", () => updateVisibleCountRef.current());
 
       m.on("click", (e) => {
-        if (onMapClickCoordinates) {
-          onMapClickCoordinates({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+        if (pickingRef.current) {
+          setManualLocation({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+          setPickingLocation(false);
+          return;
         }
+        onMapClickCoordinates?.({ lat: e.lngLat.lat, lng: e.lngLat.lng });
       });
 
+      // Container size changes (tab switches, drawer, rotation, mobile
+      // browser chrome) need an explicit resize.
+      resizeObserver = new ResizeObserver(() => {
+        m.resize();
+        if (pendingFlyRef.current && m.getContainer().clientWidth > 0) {
+          const pending = pendingFlyRef.current;
+          pendingFlyRef.current = null;
+          m.flyTo({ essential: true, ...pending });
+        }
+      });
+      resizeObserver.observe(mapContainer.current);
+
       map.current = m;
+      // Dev-only handle for debugging/QA in the browser console.
+      if (process.env.NODE_ENV !== "production") {
+        (window as unknown as { __nlMap?: maplibregl.Map }).__nlMap = m;
+      }
     } catch (err) {
       console.error("MapLibre initialization failed:", err);
       setWebGlSupported(false);
     }
 
     return () => {
+      resizeObserver?.disconnect();
       if (map.current) {
         map.current.remove();
         map.current = null;
       }
     };
-  }, [webGlSupported]); // Only run on mount or webgl state
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- create once
+  }, [webGlSupported]);
 
-  // Handle Theme and API Key Style Switch Preserving Viewport
+  // Theme / basemap / key change → swap the style, preserving the camera.
+  // Markers are DOM elements and survive; custom layers are re-added by the
+  // style.load handler. Rapid switching is safe: the last setStyle wins and
+  // the handler always reads current options.
   useEffect(() => {
-    if (!map.current || !mapLoaded) return;
+    const m = map.current;
+    if (!m || !mapLoaded) return;
+    const id = `${basemapType}|${isDark}|${mapApiKey}`;
+    if (appliedStyleRef.current === id) return;
+    appliedStyleRef.current = id;
+    if (mapApiKey) keyRejectedRef.current = false;
 
-    const currentCenter = map.current.getCenter();
-    const currentZoom = map.current.getZoom();
-    const currentPitch = map.current.getPitch();
-    const currentBearing = map.current.getBearing();
+    styleReadyRef.current = false;
+    cameraSnapshotRef.current = {
+      center: m.getCenter(),
+      zoom: m.getZoom(),
+      pitch: m.getPitch(),
+      bearing: m.getBearing(),
+    };
+    m.setStyle(
+      keyRejectedRef.current
+        ? isDark ? DARK_MAP_STYLE : LIGHT_MAP_STYLE
+        : getMapStyle(isDark, mapApiKey, basemapType)
+    );
+  }, [isDark, mapApiKey, basemapType, mapLoaded]);
 
-    const isDark = resolvedTheme === "dark";
-    const targetStyle = getMapStyle(isDark, mapApiKey);
-
-    map.current.setStyle(targetStyle);
-
-    // After style loads, restore position, camera pitch/bearing, and re-render markers
-    map.current.once("style.load", () => {
-      if (!map.current) return;
-      map.current.jumpTo({
-        center: currentCenter,
-        zoom: currentZoom,
-        pitch: currentPitch,
-        bearing: currentBearing,
-      });
-      setPitch(Math.round(currentPitch));
-      setBearing(Math.round(currentBearing));
-      setIs3D(currentPitch >= 20);
-      renderMarkers();
-      updateVisibleCount();
-    });
-  }, [resolvedTheme, mapApiKey, mapLoaded, updateVisibleCount]);
-
-  // Handle Locality change with flyTo
+  // Perspective / labels change without a style reload.
   useEffect(() => {
-    if (!map.current || !mapLoaded) return;
-    map.current.flyTo({
+    enhanceRef.current();
+  }, [is3D, satelliteLabels, mapLoaded]);
+
+  // Locality change → fly there.
+  useEffect(() => {
+    if (!mapLoaded) return;
+    flyWhenVisible({
       center: [currentLocality.lng, currentLocality.lat],
       zoom: currentLocality.zoom,
-      essential: true,
       duration: 1800,
     });
-  }, [currentLocality, mapLoaded]);
+  }, [currentLocality, mapLoaded, flyWhenVisible]);
 
-  // Toggle 2D / 3D Mode based on actual camera state
+  // "Show on map" from the feed / search.
+  useEffect(() => {
+    if (!mapFocus || !mapLoaded) return;
+    flyWhenVisible({
+      center: [mapFocus.lng, mapFocus.lat],
+      zoom: Math.max(mapFocus.zoom ?? 15, 13),
+      duration: 1200,
+    });
+  }, [mapFocus, mapLoaded, flyWhenVisible]);
+
+  // 2D ↔ 3D. The button reflects the real camera pitch (see `pitchend`).
   const toggle3D = useCallback(() => {
-    if (!map.current) return;
-    const currentPitch = map.current.getPitch();
-    const willBe3D = currentPitch < 20;
+    const m = map.current;
+    if (!m) return;
+    const willBe3D = m.getPitch() < 20;
     setIs3D(willBe3D);
-
-    if (willBe3D) {
-      map.current.easeTo({
-        pitch: 55,
-        bearing: -20,
-        duration: 1000,
-      });
-    } else {
-      map.current.easeTo({
-        pitch: 0,
-        bearing: 0,
-        duration: 800,
-      });
-    }
+    m.easeTo(
+      willBe3D
+        ? { pitch: PITCH_3D, bearing: m.getBearing() || -17, duration: 900 }
+        : { pitch: 0, bearing: 0, duration: 700 }
+    );
   }, [setIs3D]);
 
-  // Reset North
+  const rotateBy = (deg: number) =>
+    map.current?.easeTo({ bearing: map.current.getBearing() + deg, duration: 450 });
+
   const resetNorth = () => {
-    if (!map.current) return;
-    map.current.easeTo({ bearing: 0, pitch: is3D ? 55 : 0, duration: 600 });
+    map.current?.easeTo({ bearing: 0, duration: 500 });
   };
 
-  // Live location: off → start tracking & follow; tracking but panned away →
-  // recentre & follow; following → stop sharing.
+  // My location: first press starts sharing and centres once; later presses
+  // recentre. Following is a separate, explicit toggle.
   const locateMe = () => {
     if (locationStatus === "active" && liveLocation) {
-      if (following) {
-        stopLiveLocation();
-        setFollowing(false);
-        return;
-      }
-      setFollowing(true);
       map.current?.easeTo({
         center: [liveLocation.lng, liveLocation.lat],
         zoom: Math.max(map.current.getZoom(), 15),
-        duration: 900,
+        duration: 800,
       });
       return;
     }
-    hasCenteredRef.current = false;
-    setFollowing(true);
+    centerOnNextFixRef.current = true;
     startLiveLocation();
+  };
+
+  const setFollowMode = (mode: "on" | "off") => {
+    setFollow(mode);
+    if (mode === "on" && liveLocation) {
+      map.current?.easeTo({
+        center: [liveLocation.lng, liveLocation.lat],
+        zoom: Math.max(map.current.getZoom(), 15),
+        duration: 700,
+      });
+    }
+  };
+
+  const stopSharing = () => {
+    stopLiveLocation();
+    setFollow("off");
   };
 
   // Keep the "you are here" marker in sync with the device position.
@@ -446,19 +508,36 @@ export function GeospatialMap({
       if (heading !== null) cone.style.transform = `rotate(${heading}deg)`;
     }
 
-    if (following) {
-      const firstFix = !hasCenteredRef.current;
-      hasCenteredRef.current = true;
-      m.easeTo({
-        center: [lng, lat],
-        zoom: firstFix ? Math.max(m.getZoom(), 15) : m.getZoom(),
-        duration: firstFix ? 1200 : 600,
-      });
+    if (centerOnNextFixRef.current) {
+      centerOnNextFixRef.current = false;
+      m.easeTo({ center: [lng, lat], zoom: Math.max(m.getZoom(), 15), duration: 1100 });
+    } else if (follow === "on") {
+      m.easeTo({ center: [lng, lat], duration: 600 });
     }
-  }, [liveLocation, mapLoaded, following]);
+  }, [liveLocation, mapLoaded, follow]);
 
-  // Accuracy ring is in metres, so resize it as the zoom changes; a manual
-  // pan ends follow mode.
+  // Manual fallback location marker.
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapLoaded) return;
+    if (!manualLocation || liveLocation) {
+      manualMarkerRef.current?.remove();
+      manualMarkerRef.current = null;
+      return;
+    }
+    if (!manualMarkerRef.current) {
+      const el = document.createElement("div");
+      el.innerHTML = manualLocationHTML();
+      manualMarkerRef.current = new maplibregl.Marker({ element: el, anchor: "bottom" })
+        .setLngLat([manualLocation.lng, manualLocation.lat])
+        .addTo(m);
+    } else {
+      manualMarkerRef.current.setLngLat([manualLocation.lng, manualLocation.lat]);
+    }
+  }, [manualLocation, liveLocation, mapLoaded]);
+
+  // Accuracy ring is in metres, so resize it with zoom. A user drag (not a
+  // programmatic move) pauses following.
   useEffect(() => {
     const m = map.current;
     if (!m || !mapLoaded) return;
@@ -466,7 +545,7 @@ export function GeospatialMap({
       const el = userMarkerRef.current?.getElement();
       if (el) sizeAccuracyRing(el, m.getZoom());
     };
-    const onDragStart = () => setFollowing(false);
+    const onDragStart = () => setFollow((f) => (f === "on" ? "paused" : f));
     m.on("zoom", onZoom);
     m.on("dragstart", onDragStart);
     return () => {
@@ -474,6 +553,14 @@ export function GeospatialMap({
       m.off("dragstart", onDragStart);
     };
   }, [mapLoaded]);
+
+  // Escape cancels "pick location on map".
+  useEffect(() => {
+    if (!pickingLocation) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setPickingLocation(false);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [pickingLocation]);
 
   // Render Geospatial HTML Markers
   const renderMarkers = useCallback(() => {
@@ -503,7 +590,7 @@ export function GeospatialMap({
             code: inc.trackingCode,
             title: inc.categoryLabel,
             body: esc(inc.description),
-            meta: `${esc(inc.localityName)} · ${inc.observationCount} observation${inc.observationCount === 1 ? "" : "s"}`,
+            meta: `Community observation · ${esc(inc.localityName)}<br/>Observed ${esc(formatDateTime(inc.observedAt))} · ${inc.observationCount} independent observation${inc.observationCount === 1 ? "" : "s"}`,
             footer: `<button id="inspect-inc-${esc(inc.id)}" class="mt-3 w-full h-8 rounded-lg bg-ink text-canvas text-[12.5px] font-medium">Inspect &amp; corroborate</button>`,
           })
         );
@@ -576,7 +663,7 @@ export function GeospatialMap({
             tone: HAZARD_TONE[haz.severity],
             title: haz.headline,
             body: esc(haz.description),
-            meta: esc(haz.source),
+            meta: `${esc(haz.source)}<br/>Issued ${esc(formatDateTime(haz.issuedAt))} · expires ${esc(formatDateTime(haz.expiresAt))}`,
           })
         );
 
@@ -611,7 +698,7 @@ export function GeospatialMap({
                 ${stat("Forecast", `${risk.rainfallForecastMm ?? "—"} mm`)}
                 ${stat("Gauge", `${risk.waterLevelMeters ?? "—"} m`)}
               </div>
-              <p class="mt-2.5 text-[11.5px] text-ink-subtle">Experimental rule-based estimate — not an official warning.</p>`,
+              <p class="mt-2.5 text-[11.5px] text-ink-subtle">Experimental rule-based estimate, evaluated ${esc(formatDateTime(risk.evaluatedAt))} — not an official warning.</p>`,
           })
         );
 
@@ -682,7 +769,6 @@ export function GeospatialMap({
       map.current.flyTo({
         center: [incTarget.longitude, incTarget.latitude],
         zoom: 16,
-        pitch: is3D ? 55 : 0,
         essential: true,
         duration: 1200,
       });
@@ -695,7 +781,6 @@ export function GeospatialMap({
       map.current.flyTo({
         center: [hazTarget.centerLng, hazTarget.centerLat],
         zoom: 15,
-        pitch: is3D ? 55 : 0,
         essential: true,
         duration: 1200,
       });
@@ -708,7 +793,6 @@ export function GeospatialMap({
       map.current.flyTo({
         center: [riskTarget.centerLng, riskTarget.centerLat],
         zoom: 15,
-        pitch: is3D ? 55 : 0,
         essential: true,
         duration: 1200,
       });
@@ -729,13 +813,14 @@ export function GeospatialMap({
         map.current.flyTo({
           center: [lng, lat],
           zoom: 16,
-          pitch: is3D ? 55 : 0,
           essential: true,
           duration: 1200,
         });
       }
     }
-  }, [selectedIncidentId, mapLoaded, is3D, incidents, sosRequests, currentRole]);
+    // Only re-fly when the selection changes, not when data or perspective does.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIncidentId, mapLoaded]);
 
   if (!webGlSupported) {
     return (
@@ -754,149 +839,125 @@ export function GeospatialMap({
   }
 
   const ctrl =
-    "size-9 grid place-items-center text-ink-muted hover:text-ink hover:bg-surface-2 transition-colors";
+    "size-11 md:size-9 grid place-items-center text-ink-muted hover:text-ink hover:bg-surface-2 transition-colors disabled:opacity-40";
+  const chip = "nl-glass rounded-xl min-h-11 md:min-h-9 flex items-center gap-2 text-[12.5px] animate-rise";
+  const chipBtn =
+    "h-9 md:h-7 px-2.5 rounded-lg text-[12.5px] font-medium text-ink-muted hover:bg-surface-2 hover:text-ink aria-pressed:bg-accent-soft aria-pressed:text-accent-ink";
+  const usingManual = !liveLocation && manualLocation;
 
   return (
-    <div className="relative w-full h-full overflow-hidden select-none">
+    <div
+      className={`relative w-full h-full overflow-hidden select-none ${pickingLocation ? "[&_canvas]:!cursor-crosshair" : ""}`}
+    >
       {/* MapLibre DOM Target */}
       <div ref={mapContainer} className="w-full h-full" id="geospatial-map-canvas" />
 
+      {/* Status (top-left): location, picking, 3D limitations */}
+      <div className="absolute top-3 left-3 md:top-4 md:left-4 z-20 flex flex-col items-start gap-2 max-w-[calc(100%-5.5rem)] md:max-w-sm">
+        {pickingLocation && (
+          <div className={`${chip} pl-3 pr-1`} role="status">
+            <span className="text-ink">Tap the map to set your location</span>
+            <button onClick={() => setPickingLocation(false)} className={chipBtn}>
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {locationStatus === "requesting" && (
+          <div className={`${chip} px-3 text-ink-muted`} role="status">
+            <span className="size-3 rounded-full border-2 border-line-strong border-t-accent animate-spin" />
+            Finding your location…
+            <button onClick={stopSharing} className={chipBtn}>
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {locationStatus === "active" && liveLocation && (
+          <div className={`${chip} pl-3 pr-1 flex-wrap`} role="status">
+            <span className="nl-live-dot text-accent" />
+            <span className="font-medium text-ink">You</span>
+            <span className="font-mono text-[11.5px] text-ink-subtle">
+              {formatAccuracy(liveLocation.accuracy)}
+            </span>
+            <button
+              onClick={() => setFollowMode(follow === "on" ? "off" : "on")}
+              aria-pressed={follow === "on"}
+              className={chipBtn}
+              title={follow === "on" ? "Stop following" : "Keep the map centred on you"}
+            >
+              {follow === "on" ? "Following" : follow === "paused" ? "Resume follow" : "Follow"}
+            </button>
+            <button onClick={stopSharing} className={chipBtn}>
+              Stop
+            </button>
+          </div>
+        )}
+
+        {(locationStatus === "denied" || locationStatus === "unavailable") && locationError && !pickingLocation && !usingManual && (
+          <div className={`${chip} py-2 pl-3 pr-1 items-start flex-wrap`} role="status">
+            <span className="mt-1.5 size-1.5 rounded-full bg-warn shrink-0" />
+            <span className="flex-1 min-w-[12rem] text-ink-muted leading-snug py-0.5">{locationError}</span>
+            <button onClick={() => setPickingLocation(true)} className={chipBtn}>
+              Set on map
+            </button>
+          </div>
+        )}
+
+        {usingManual && !pickingLocation && locationStatus !== "requesting" && (
+          <div className={`${chip} pl-3 pr-1`} role="status">
+            <span className="size-2 rounded-full bg-ink" />
+            <span className="text-ink">Using the location you set</span>
+            <button onClick={() => setPickingLocation(true)} className={chipBtn}>
+              Change
+            </button>
+            <button onClick={() => setManualLocation(null)} className={chipBtn}>
+              Clear
+            </button>
+          </div>
+        )}
+
+        {is3D && mapLoaded && !capabilities.buildings && (
+          <div className={`${chip} px-3 text-ink-muted`} role="status">
+            3D buildings aren&apos;t available on this basemap
+          </div>
+        )}
+      </div>
+
       {/* Empty viewport hint */}
-      {visibleIncidentCount === 0 && mapLoaded && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 nl-glass rounded-full pl-4 pr-1.5 h-10 flex items-center gap-3 text-[13px] animate-rise">
-          <span className="nl-live-dot text-warn" />
-          <span className="text-ink-muted">Nothing active in this view</span>
+      {visibleIncidentCount === 0 && mapLoaded && !pickingLocation && (
+        <div className="absolute bottom-4 lg:bottom-auto lg:top-4 left-1/2 -translate-x-1/2 z-20 nl-glass rounded-full pl-4 pr-1.5 h-11 md:h-10 flex items-center gap-3 text-[13px] animate-rise whitespace-nowrap">
+          <span className="text-ink-muted">No active reports in this view</span>
           <button
             onClick={fitToActiveIncidents}
-            className="h-7 px-3 rounded-full bg-ink text-canvas text-[12px] font-medium flex items-center gap-1.5"
+            className="h-8 md:h-7 px-3 rounded-full bg-ink text-canvas text-[12px] font-medium flex items-center gap-1.5"
           >
             <Maximize2 className="size-3" /> Show all
           </button>
         </div>
       )}
 
-      <div className="absolute top-4 left-4 z-20 flex flex-col items-start gap-2 max-w-[calc(100%-8rem)]">
-        {/* Live location status */}
-        {locationStatus === "active" && liveLocation && (
-          <div className="nl-glass rounded-lg h-9 pl-3 pr-1 flex items-center gap-2.5 animate-rise">
-            <span className="nl-live-dot text-accent" />
-            <span className="text-[12.5px] font-medium text-ink">Live location</span>
-            <span className="font-mono text-[11.5px] text-ink-subtle">
-              {formatAccuracy(liveLocation.accuracy)}
-            </span>
-            <button
-              onClick={() => {
-                stopLiveLocation();
-                setFollowing(false);
-              }}
-              className="h-7 px-2 rounded-md text-[12px] font-medium text-ink-muted hover:bg-surface-2 hover:text-ink"
-            >
-              Stop
-            </button>
-          </div>
-        )}
-        {locationStatus === "requesting" && (
-          <div className="nl-glass rounded-lg h-9 px-3 flex items-center gap-2.5 text-[12.5px] text-ink-muted animate-rise">
-            <span className="size-3 rounded-full border-2 border-line-strong border-t-accent animate-spin" />
-            Finding your location…
-          </div>
-        )}
-        {(locationStatus === "denied" || locationStatus === "unavailable") && locationError && (
-          <div className="nl-glass rounded-lg min-h-9 py-2 px-3 flex items-start gap-2 text-[12.5px] text-ink-muted max-w-xs animate-rise">
-            <span className="mt-1 size-1.5 rounded-full bg-warn shrink-0" />
-            {locationError}
-          </div>
-        )}
+      {/* Controls (top-right) */}
+      <div className="absolute top-3 right-3 md:top-4 md:right-4 z-30 flex flex-col items-end gap-2">
+        <MapPanel
+          open={panelOpen}
+          onOpenChange={setPanelOpen}
+          layerFilters={layerFilters}
+          toggleLayer={toggleLayer}
+          onFitAll={() => {
+            fitToActiveIncidents();
+            setPanelOpen(false);
+          }}
+          is3D={is3D}
+          capabilities={capabilities}
+        />
 
-        {/* 3D readout */}
-        {is3D && (
-          <div className="nl-glass rounded-lg h-9 px-3 flex items-center gap-2.5 animate-rise">
-            <Compass className="size-4 text-accent" style={{ transform: `rotate(${-bearing}deg)` }} />
-            <span className="text-[12.5px] font-medium text-ink">3D</span>
-            <span className="font-mono text-[11.5px] text-ink-subtle">
-              {pitch}° pitch · {bearing}° bearing
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Controls (top-right), grouped by purpose */}
-      <div className="absolute top-4 right-4 z-20 flex flex-col items-end gap-2">
-        <div className="relative">
-          <button
-            onClick={() => setLayersMenuOpen(!layersMenuOpen)}
-            id="map-layers-toggle-btn"
-            aria-expanded={layersMenuOpen}
-            className={`nl-glass h-9 rounded-[10px] pl-2.5 pr-3 flex items-center gap-2 text-[12.5px] font-medium transition-colors ${
-              layersMenuOpen ? "text-ink" : "text-ink-muted hover:text-ink"
-            }`}
-          >
-            <Layers className="size-4" />
-            Layers
-            <span className="font-mono text-[12px] text-ink-subtle">
-              {Object.values(layerFilters).filter(Boolean).length}/{MAP_LAYERS.length}
-            </span>
-          </button>
-
-          {layersMenuOpen && (
-            <div className="absolute right-0 mt-2 w-64 rounded-xl bg-surface border border-line shadow-[var(--shadow-float)] p-1.5 z-30 animate-rise">
-              <div className="nl-eyebrow px-2.5 pt-1.5 pb-2">Show on map</div>
-              {MAP_LAYERS.map((layer) => {
-                const on = layerFilters[layer.key];
-                return (
-                  <button
-                    key={layer.key}
-                    role="switch"
-                    aria-checked={on}
-                    onClick={() => toggleLayer(layer.key)}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-surface-2 text-left"
-                  >
-                    <span className={`size-2.5 rounded-full ${layer.dot} ${on ? "" : "opacity-30"}`} />
-                    <span className={`flex-1 text-[13px] ${on ? "text-ink" : "text-ink-subtle"}`}>
-                      {layer.label}
-                    </span>
-                    <span
-                      className={`relative w-7 h-4 rounded-full transition-colors ${
-                        on ? "bg-accent" : "bg-surface-3"
-                      }`}
-                    >
-                      <span
-                        className={`absolute top-0.5 size-3 rounded-full bg-white shadow transition-[left] ${
-                          on ? "left-3.5" : "left-0.5"
-                        }`}
-                      />
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        <div className="nl-glass rounded-[10px] overflow-hidden flex flex-col divide-y divide-line">
-          <button
-            onClick={toggle3D}
-            id="map-3d-toggle-btn"
-            title="Toggle 3D perspective"
-            aria-pressed={is3D}
-            className={`${ctrl} font-mono text-[11.5px] font-semibold ${is3D ? "!text-accent" : ""}`}
-          >
-            {is3D ? "3D" : "2D"}
-          </button>
-          <button onClick={resetNorth} className={ctrl} title="Reset bearing (north up)">
-            <Compass className="size-4" style={{ transform: `rotate(${-bearing}deg)` }} />
-          </button>
+        <div className="nl-glass rounded-xl overflow-hidden flex flex-col divide-y divide-line">
           <button
             onClick={locateMe}
             id="map-live-location-btn"
-            aria-pressed={locationStatus === "active"}
-            title={
-              locationStatus === "active"
-                ? following
-                  ? "Stop sharing live location"
-                  : "Recentre on my location"
-                : "Show my live location"
-            }
+            aria-label={locationStatus === "active" ? "Centre on my location" : "Show my location"}
+            title={locationStatus === "active" ? "Centre on my location" : "Show my location"}
             className={`${ctrl} ${locationStatus === "active" ? "!text-accent" : ""}`}
           >
             {locationStatus === "requesting" ? (
@@ -904,48 +965,53 @@ export function GeospatialMap({
             ) : (
               <Navigation
                 className="size-4"
-                fill={locationStatus === "active" && following ? "currentColor" : "none"}
+                fill={locationStatus === "active" && follow === "on" ? "currentColor" : "none"}
               />
             )}
           </button>
           <button
-            onClick={fitToActiveIncidents}
-            id="map-fit-incidents-btn"
-            className={ctrl}
-            title="Fit to active incidents"
+            onClick={toggle3D}
+            id="map-3d-toggle-btn"
+            aria-pressed={is3D}
+            aria-label={is3D ? "Switch to 2D overhead view" : "Switch to 3D perspective"}
+            title={is3D ? "Switch to 2D" : "Switch to 3D"}
+            className={`${ctrl} font-mono text-[12px] font-semibold ${is3D ? "!text-accent" : ""}`}
           >
-            <Maximize2 className="size-4" />
+            {is3D ? "3D" : "2D"}
           </button>
-        </div>
-
-        <div className="nl-glass rounded-[10px] overflow-hidden flex flex-col divide-y divide-line">
-          <button onClick={() => map.current?.zoomIn()} className={ctrl} title="Zoom in">
-            <ZoomIn className="size-4" />
-          </button>
-          <button onClick={() => map.current?.zoomOut()} className={ctrl} title="Zoom out">
-            <ZoomOut className="size-4" />
-          </button>
-        </div>
-
-        <button
-          onClick={() => {
-            setTempKeyInput(mapApiKey);
-            setApiKeyModalOpen(true);
-          }}
-          id="map-api-key-btn"
-          className={`nl-glass relative size-9 rounded-[10px] grid place-items-center transition-colors ${
-            mapApiKey ? "text-warn" : "text-ink-muted hover:text-ink"
-          }`}
-          title="Basemap provider settings"
-        >
-          <Key className="size-4" />
-          {mapApiKey && (
-            <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-warn" />
+          {(is3D || bearing !== 0) && (
+            <button
+              onClick={resetNorth}
+              aria-label="Reset rotation to north"
+              title="Reset to north"
+              className={ctrl}
+            >
+              <Compass className="size-4" style={{ transform: `rotate(${-bearing - 45}deg)` }} />
+            </button>
           )}
-        </button>
+          {is3D && (
+            <>
+              <button onClick={() => rotateBy(-30)} aria-label="Rotate left" title="Rotate left" className={ctrl}>
+                <RotateCcw className="size-4" />
+              </button>
+              <button onClick={() => rotateBy(30)} aria-label="Rotate right" title="Rotate right" className={ctrl}>
+                <RotateCw className="size-4" />
+              </button>
+            </>
+          )}
+        </div>
+
+        <div className="nl-glass rounded-xl overflow-hidden flex flex-col divide-y divide-line">
+          <button onClick={() => map.current?.zoomIn()} aria-label="Zoom in" title="Zoom in" className={ctrl}>
+            <Plus className="size-4" />
+          </button>
+          <button onClick={() => map.current?.zoomOut()} aria-label="Zoom out" title="Zoom out" className={ctrl}>
+            <Minus className="size-4" />
+          </button>
+        </div>
       </div>
 
-      {/* Legend (bottom-left) */}
+      {/* Compact legend (desktop); on mobile the Map panel doubles as legend */}
       <div className="absolute bottom-4 left-4 z-20 hidden lg:flex items-center gap-4 nl-glass rounded-[10px] h-9 px-3.5">
         {MAP_LAYERS.filter((l) => layerFilters[l.key]).map((l) => (
           <span key={l.key} className="flex items-center gap-1.5 text-[12px] text-ink-muted">
@@ -954,126 +1020,193 @@ export function GeospatialMap({
           </span>
         ))}
       </div>
+    </div>
+  );
+}
 
-      {/* Map API Key Configuration Modal */}
-      {apiKeyModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-rise">
-          <div className="bg-surface border border-line rounded-2xl shadow-[var(--shadow-float)] max-w-md w-full p-6 text-ink space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-line">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500">
-                  <Key className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-semibold">Map Provider & API Key</h3>
-                  <p className="text-[12.5px] text-ink-subtle">
-                    Configure basemap styling & vector tiles
-                  </p>
-                </div>
-              </div>
+/* --------------------------------------------------------------------------
+   Map panel: map type, satellite labels, overlays. Popover on desktop,
+   bottom sheet on mobile.
+   -------------------------------------------------------------------------- */
+
+function MapPanel({
+  open,
+  onOpenChange,
+  layerFilters,
+  toggleLayer,
+  onFitAll,
+  is3D,
+  capabilities,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  layerFilters: LayerFilters;
+  toggleLayer: (key: keyof LayerFilters) => void;
+  onFitAll: () => void;
+  is3D: boolean;
+  capabilities: MapCapabilities;
+}) {
+  const { basemapType, setBasemapType, satelliteLabels, setSatelliteLabels } = useDemo();
+  const ref = useRef<HTMLDivElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => onOpenChange(false), [onOpenChange]);
+  useDismiss([ref, sheetRef], open, close);
+  const activeCount = Object.values(layerFilters).filter(Boolean).length;
+
+  const switchRow = (on: boolean) =>
+    `relative shrink-0 w-9 h-5 rounded-full transition-colors ${on ? "bg-accent" : "bg-surface-3"}`;
+  const knob = (on: boolean) =>
+    `absolute top-0.5 size-4 rounded-full bg-white shadow transition-[left] ${on ? "left-[18px]" : "left-0.5"}`;
+
+  const body = (
+    <>
+            <div className="nl-eyebrow mb-2">Map type</div>
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Map type">
+              {(
+                [
+                  { id: "street", label: "Street", icon: MapIcon },
+                  { id: "satellite", label: "Satellite", icon: SatelliteIcon },
+                ] as const
+              ).map((t) => {
+                const active = basemapType === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setBasemapType(t.id)}
+                    className={`h-12 md:h-11 rounded-lg border flex items-center justify-center gap-2 text-[13px] font-medium transition-colors ${
+                      active
+                        ? "border-accent bg-accent-soft text-accent-ink"
+                        : "border-line text-ink-muted hover:border-line-strong hover:text-ink"
+                    }`}
+                  >
+                    <t.icon className="size-4" />
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {basemapType === "satellite" && (
+              <>
+                <button
+                  role="switch"
+                  aria-checked={satelliteLabels}
+                  onClick={() => setSatelliteLabels(!satelliteLabels)}
+                  className="mt-2 w-full min-h-11 flex items-center gap-3 px-1 text-left"
+                >
+                  <span className="flex-1 text-[13px] text-ink">Road and place labels</span>
+                  <span className={switchRow(satelliteLabels)}>
+                    <span className={knob(satelliteLabels)} />
+                  </span>
+                </button>
+                <p className="text-[11.5px] text-ink-subtle px-1">
+                  Imagery is periodic, not live.
+                </p>
+              </>
+            )}
+
+            {is3D && (
+              <p className="mt-3 text-[11.5px] leading-snug text-ink-subtle px-1">
+                3D:{" "}
+                {capabilities.buildings
+                  ? "buildings from OpenStreetMap footprints (heights estimated where not recorded)"
+                  : "no building data on this basemap"}
+                {capabilities.terrain ? "; MapTiler terrain at true scale." : "."}
+              </p>
+            )}
+
+            <div className="mt-4 mb-1 flex items-center justify-between">
+              <span className="nl-eyebrow">Overlays</span>
               <button
-                onClick={() => setApiKeyModalOpen(false)}
-                className="p-1.5 rounded-lg text-ink-subtle hover:text-ink hover:bg-surface-2 cursor-pointer"
+                onClick={onFitAll}
+                className="h-9 md:h-7 px-2 rounded-md text-[12px] font-medium text-accent-ink hover:bg-accent-soft flex items-center gap-1.5"
               >
-                <X className="w-4 h-4" />
+                <Maximize2 className="size-3" /> Fit to active
               </button>
             </div>
-
-            {/* Current status info */}
-            <div className="p-3.5 rounded-2xl bg-surface-2 border border-line text-[12.5px] space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-ink-muted">Active Basemap:</span>
-                <span
-                  className={`inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-full ${
-                    mapApiKey
-                      ? "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
-                      : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
-                  }`}
-                >
-                  <Check className="w-3 h-3" />
-                  {mapApiKey ? "MapTiler / Vector Key Active" : "CARTO Open Basemap (Free)"}
-                </span>
-              </div>
-              <p className="text-ink-subtle text-[12px] leading-relaxed">
-                {mapApiKey
-                  ? "Your custom API key is active for high-resolution vector styles."
-                  : "No key is required by default! Neighbourlink renders open-source CARTO Positron & Dark Matter tiles out-of-the-box. Enter your MapTiler key or style URL below anytime for enhanced vector detail."}
-              </p>
-            </div>
-
-            {/* Key Input */}
-            <div className="space-y-1.5">
-              <label className="text-[12.5px] font-semibold text-ink-muted block">
-                MapTiler API Key or Vector Style JSON URL
-              </label>
-              <input
-                type="text"
-                value={tempKeyInput}
-                onChange={(e) => setTempKeyInput(e.target.value)}
-                placeholder="e.g. your_maptiler_api_key or https://.../style.json"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-line bg-white dark:bg-slate-800 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-sky-500 text-ink"
-              />
-              <div className="text-[12px] text-ink-subtle flex items-center justify-between pt-1">
-                <span>Free MapTiler keys at</span>
-                <a
-                  href="https://cloud.maptiler.com/account/keys/"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-sky-500 hover:underline inline-flex items-center gap-1 font-medium"
-                >
-                  cloud.maptiler.com <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center justify-between pt-2">
-              {mapApiKey ? (
+            {MAP_LAYERS.map((layer) => {
+              const on = layerFilters[layer.key];
+              return (
                 <button
-                  onClick={() => {
-                    setTempKeyInput("");
-                    setMapApiKey("");
-                    if (typeof window !== "undefined") {
-                      localStorage.removeItem("neighbourlink_map_api_key");
-                    }
-                    setApiKeyModalOpen(false);
-                  }}
-                  className="text-[12.5px] text-red-500 hover:text-red-600 dark:hover:text-red-400 font-semibold cursor-pointer"
+                  key={layer.key}
+                  role="switch"
+                  aria-checked={on}
+                  onClick={() => toggleLayer(layer.key)}
+                  className="w-full min-h-11 md:min-h-10 flex items-center gap-3 px-1 rounded-lg hover:bg-surface-2 text-left"
                 >
-                  Reset to Free Basemap
+                  <span className={`size-2.5 rounded-full shrink-0 ${layer.dot} ${on ? "" : "opacity-30"}`} />
+                  <span className="flex-1 min-w-0">
+                    <span className={`block text-[13px] ${on ? "text-ink" : "text-ink-subtle"}`}>
+                      {layer.label}
+                    </span>
+                    <span className="block text-[11.5px] text-ink-subtle">{layer.kind}</span>
+                  </span>
+                  <span className={switchRow(on)}>
+                    <span className={knob(on)} />
+                  </span>
                 </button>
-              ) : (
-                <span />
-              )}
+              );
+            })}
+    </>
+  );
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setApiKeyModalOpen(false)}
-                  className="px-3.5 py-2 rounded-xl text-[12.5px] font-medium text-ink-muted hover:bg-surface-2 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => {
-                    const cleaned = tempKeyInput.trim();
-                    setMapApiKey(cleaned);
-                    if (typeof window !== "undefined") {
-                      if (cleaned) {
-                        localStorage.setItem("neighbourlink_map_api_key", cleaned);
-                      } else {
-                        localStorage.removeItem("neighbourlink_map_api_key");
-                      }
-                    }
-                    setApiKeyModalOpen(false);
-                  }}
-                  className="px-4 py-2 rounded-xl text-[12.5px] font-semibold text-canvas bg-ink hover:opacity-90 shadow-md cursor-pointer"
-                >
-                  Apply Key
-                </button>
-              </div>
-            </div>
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => onOpenChange(!open)}
+        id="map-layers-toggle-btn"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        aria-label="Map type and overlays"
+        className={`nl-glass h-11 md:h-9 rounded-xl px-3 flex items-center gap-2 text-[13px] font-medium transition-colors ${
+          open ? "text-ink" : "text-ink-muted hover:text-ink"
+        }`}
+      >
+        <Layers className="size-4" />
+        <span className="hidden sm:inline">Map</span>
+        <span className="font-mono text-[11px] text-ink-subtle">
+          {activeCount}/{MAP_LAYERS.length}
+        </span>
+      </button>
+
+      {open && (
+        <>
+          {/* Desktop: popover under the button */}
+          <div
+            role="dialog"
+            aria-label="Map type and overlays"
+            className="hidden md:block absolute z-50 right-0 top-full mt-2 w-80 max-h-[calc(100dvh-10rem)] overflow-y-auto rounded-xl bg-surface border border-line shadow-[var(--shadow-float)] p-3 animate-rise"
+          >
+            {body}
           </div>
-        </div>
+          {/* Mobile: bottom sheet portalled above the bottom nav */}
+          {createPortal(
+            <div className="md:hidden">
+              <div className="fixed inset-0 z-[60] bg-black/45" onClick={close} aria-hidden />
+              <div
+                ref={sheetRef}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Map type and overlays"
+                className="fixed z-[61] inset-x-0 bottom-0 max-h-[85dvh] overflow-y-auto rounded-t-2xl bg-surface border-t border-line shadow-[var(--shadow-float)] px-4 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))] animate-rise"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="mx-auto h-1 w-10 rounded-full bg-line-strong" />
+                </div>
+                {body}
+                <button
+                  onClick={close}
+                  className="mt-3 w-full h-11 rounded-lg bg-surface-2 text-[14px] font-medium text-ink"
+                >
+                  Done
+                </button>
+              </div>
+            </div>,
+            document.body
+          )}
+        </>
       )}
     </div>
   );

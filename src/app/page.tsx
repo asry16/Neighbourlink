@@ -43,6 +43,7 @@ export default function Home() {
     setSelectedIncidentId,
     isDrawerOpen,
     setIsDrawerOpen,
+    requestMapFocus,
   } = useDemo();
 
   const [reportModalOpen, setReportModalOpen] = useState(false);
@@ -66,8 +67,9 @@ export default function Home() {
     setIsDrawerOpen(true);
   };
 
-  const handleShowOnMap = (_coords: { lat: number; lng: number }, id?: string) => {
+  const handleShowOnMap = (coords: { lat: number; lng: number }, id?: string) => {
     setActiveTab("map");
+    requestMapFocus({ ...coords, zoom: 15 });
     if (id) handleSelectIncident(id);
   };
 
@@ -80,7 +82,9 @@ export default function Home() {
   const openSos = () => setSosModalOpen(true);
   const openEmergency = () => setEmergencyOpen(true);
 
-  let stage: React.ReactNode;
+  // The map stays mounted underneath other views so its camera, tiles and
+  // markers survive tab switches (one map instance for the session).
+  let stage: React.ReactNode = null;
   if (activeTab === "responder") stage = <ResponderView />;
   else if (activeTab === "settings") stage = <SettingsView />;
   else if (isFeedTab(activeTab))
@@ -93,7 +97,6 @@ export default function Home() {
         onShowOnMap={handleShowOnMap}
       />
     );
-  else stage = <GeospatialMap onSelectIncident={handleSelectIncident} />;
 
   return (
     <div className="flex h-dvh w-screen overflow-hidden nl-backdrop">
@@ -109,7 +112,10 @@ export default function Home() {
         <TopBar activeTab={activeTab} onTabChange={setActiveTab} onOpenEmergency={openEmergency} />
 
         <div className="flex-1 flex overflow-hidden relative">
-          <main className="flex-1 min-w-0 flex flex-col relative overflow-hidden pb-16 md:pb-0">
+          <main className="flex-1 min-w-0 flex flex-col relative overflow-hidden pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
+            <div className={activeTab === "map" ? "flex-1 min-h-0 relative" : "hidden"}>
+              <GeospatialMap onSelectIncident={handleSelectIncident} />
+            </div>
             {stage}
           </main>
 

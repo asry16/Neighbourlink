@@ -12,7 +12,8 @@ import {
   Settings2,
 } from "lucide-react";
 import { useDemo, DEMO_LOCALITIES, DEMO_USERS, type Role } from "@/context/demo-context";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { ThemeSwitcher } from "@/components/theme-toggle";
+import { Search } from "./search";
 import { NAV_ITEMS, isFeedTab, type AppTab } from "@/lib/navigation";
 import { useDismiss } from "@/lib/use-dismiss";
 import { cn } from "@/lib/utils";
@@ -68,7 +69,7 @@ function Menu({
 }
 
 const iconButton =
-  "relative size-9 grid place-items-center rounded-lg text-ink-muted hover:bg-surface-2 hover:text-ink transition-colors";
+  "relative size-11 md:size-9 grid place-items-center rounded-lg text-ink-muted hover:bg-surface-2 hover:text-ink transition-colors";
 
 interface TopBarProps {
   activeTab: AppTab;
@@ -93,8 +94,9 @@ export function TopBar({ activeTab, onTabChange, onOpenEmergency }: TopBarProps)
   const showingMap = activeTab === "map";
 
   return (
-    <header className="h-16 shrink-0 border-b border-line bg-surface/80 backdrop-blur-xl px-2.5 md:px-5 flex items-center gap-1 sm:gap-2 relative z-50">
-      <div className="md:hidden">
+    <header className="shrink-0 border-b border-line bg-surface/80 backdrop-blur-xl pt-[env(safe-area-inset-top)] relative z-50">
+      <div className="h-14 md:h-16 px-2 md:px-5 flex items-center gap-1 sm:gap-2">
+      <div className="hidden sm:block md:hidden">
         <Brand compact />
       </div>
 
@@ -104,15 +106,15 @@ export function TopBar({ activeTab, onTabChange, onOpenEmergency }: TopBarProps)
           <button
             onClick={toggle}
             aria-expanded={open}
-            aria-label="Select monitored sector"
+            aria-label="Choose your area"
             className={cn(
-              "h-10 pl-2 pr-1.5 sm:pl-2.5 sm:pr-2 rounded-lg flex items-center gap-2 sm:gap-2.5 text-left transition-colors hover:bg-surface-2 min-w-0",
+              "h-11 md:h-10 pl-2 pr-1.5 sm:pl-2.5 sm:pr-2 rounded-lg flex items-center gap-2 sm:gap-2.5 text-left transition-colors hover:bg-surface-2 min-w-0",
               open && "bg-surface-2"
             )}
           >
             <MapPin className="size-4 text-accent shrink-0" strokeWidth={2} />
             <span className="flex flex-col leading-tight min-w-0">
-              <span className="nl-eyebrow !text-[9.5px] hidden sm:block">Monitored sector</span>
+              <span className="nl-eyebrow !text-[9.5px] hidden sm:block">Your area</span>
               <span className="text-[13.5px] font-medium text-ink truncate max-w-[6.5rem] sm:max-w-[16rem]">
                 {currentLocality.name}
               </span>
@@ -126,7 +128,7 @@ export function TopBar({ activeTab, onTabChange, onOpenEmergency }: TopBarProps)
         {(close) => (
           <>
             <div className="px-2.5 pt-1.5 pb-2 text-[12px] text-ink-subtle leading-snug">
-              Your advisory feed is scoped to this sector. Switching recentres the map.
+              Alerts and the feed are scoped to this area. Choosing one also moves the map there.
             </div>
             <div className="max-h-80 overflow-y-auto">
               {DEMO_LOCALITIES.map((loc) => {
@@ -158,13 +160,15 @@ export function TopBar({ activeTab, onTabChange, onOpenEmergency }: TopBarProps)
         )}
       </Menu>
 
-      <div className="flex-1" />
+      <div className="flex-1 min-w-0 flex justify-end lg:justify-center">
+        <Search onNavigate={() => undefined} />
+      </div>
 
       {/* View switch: map ↔ feed */}
       <div
         role="tablist"
         aria-label="View"
-        className="hidden sm:flex items-center h-9 p-[3px] rounded-[10px] bg-surface-2 border border-line"
+        className="hidden lg:flex items-center h-9 p-[3px] rounded-[10px] bg-surface-2 border border-line"
       >
         {[
           { id: "map" as const, label: "Map", icon: MapIcon, active: showingMap },
@@ -188,7 +192,7 @@ export function TopBar({ activeTab, onTabChange, onOpenEmergency }: TopBarProps)
         ))}
       </div>
 
-      <div className="hidden sm:block w-px h-6 bg-line mx-1" />
+      <div className="hidden lg:block w-px h-6 bg-line mx-1" />
 
       {/* Notifications */}
       <Menu
@@ -264,15 +268,12 @@ export function TopBar({ activeTab, onTabChange, onOpenEmergency }: TopBarProps)
         )}
       </Menu>
 
-      <div className="hidden sm:block">
-        <ThemeToggle />
-      </div>
 
       {/* Mobile-only 112 (desktop has it in the nav rail) */}
       <button
         onClick={onOpenEmergency}
         aria-label="Call emergency 112"
-        className="md:hidden h-9 px-2.5 rounded-lg bg-danger text-white text-[12.5px] font-semibold flex items-center gap-1.5"
+        className="md:hidden h-11 px-2.5 rounded-lg bg-danger text-white text-[12.5px] font-semibold flex items-center gap-1.5"
       >
         <PhoneCall className="size-3.5" />
         112
@@ -288,7 +289,7 @@ export function TopBar({ activeTab, onTabChange, onOpenEmergency }: TopBarProps)
             aria-expanded={open}
             aria-label="Switch demo role"
             className={cn(
-              "h-10 pl-1 pr-2 rounded-full sm:rounded-lg flex items-center gap-2.5 hover:bg-surface-2 transition-colors",
+              "h-11 md:h-10 pl-1.5 pr-1.5 md:pr-2 rounded-full sm:rounded-lg flex items-center gap-2.5 hover:bg-surface-2 transition-colors",
               open && "bg-surface-2"
             )}
           >
@@ -377,14 +378,15 @@ export function TopBar({ activeTab, onTabChange, onOpenEmergency }: TopBarProps)
                 <Settings2 className="size-4" strokeWidth={1.75} />
                 Settings &amp; audit log
               </button>
-              <div className="h-9 pl-2.5 flex items-center justify-between text-[13px] text-ink-muted">
-                Theme
-                <ThemeToggle />
-              </div>
+            </div>
+            <div className="mt-1.5 pt-2 border-t border-line px-1 pb-0.5">
+              <div className="nl-eyebrow px-1.5 pb-1.5">Theme</div>
+              <ThemeSwitcher />
             </div>
           </>
         )}
       </Menu>
+      </div>
     </header>
   );
 }

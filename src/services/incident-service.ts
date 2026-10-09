@@ -100,7 +100,7 @@ export class IncidentService {
         },
       },
       include: {
-        reporter: true,
+        reporter: { select: { id: true, name: true, role: true } },
         observations: true,
       },
     });

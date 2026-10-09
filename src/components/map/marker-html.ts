@@ -118,3 +118,12 @@ export function userLocationHTML() {
       <div class="absolute left-0 top-0 -translate-x-1/2 -translate-y-1/2 size-[18px] rounded-full bg-accent ring-[3px] ring-white shadow-[0_2px_8px_rgb(0_0_0/0.35)]"></div>
     </div>`;
 }
+
+/** Location the user chose on the map (fallback when GPS is unavailable). */
+export function manualLocationHTML() {
+  return `
+    <div class="flex flex-col items-center pointer-events-none">
+      <span class="mb-1 h-5 px-1.5 rounded bg-ink text-canvas text-[10.5px] font-medium grid place-items-center whitespace-nowrap shadow">Your location (set manually)</span>
+      <div class="size-4 rounded-full bg-ink ring-[3px] ring-white shadow-[0_2px_8px_rgb(0_0_0/0.35)]"></div>
+    </div>`;
+}

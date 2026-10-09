@@ -239,7 +239,7 @@ export function IncidentDetailsPanel({
           /* Mobile: Bottom Sheet */
           inset-x-0 bottom-0 rounded-t-3xl max-h-[85vh] border-t
           /* Desktop: Collapsible Right Panel */
-          md:top-16 md:bottom-0 md:right-0 md:left-auto md:w-[420px] md:max-h-full md:rounded-none md:border-l md:border-t-0
+          md:top-16 md:bottom-0 md:right-0 md:left-auto md:w-[340px] lg:w-[400px] md:max-h-full md:rounded-none md:border-l md:border-t-0
           ${isCollapsed ? "translate-y-[calc(100%-60px)] md:translate-y-0 md:translate-x-[calc(100%-52px)]" : "translate-y-0 md:translate-x-0"}
         `}
         aria-label="Incident details and coordination panel"

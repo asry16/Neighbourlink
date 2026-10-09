@@ -36,7 +36,7 @@ export function Brand({ compact = false }: { compact?: boolean }) {
           <div className="font-display text-[17px] font-semibold tracking-[-0.02em] text-ink">
             Neighbourlink
           </div>
-          <div className="nl-eyebrow mt-1 !text-[9.5px]">Kolkata · Demo grid</div>
+          <div className="nl-eyebrow mt-1 !text-[9.5px]">Kolkata · demo data</div>
         </div>
       )}
     </div>

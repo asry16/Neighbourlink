@@ -130,23 +130,17 @@ export function NavRail({
           </div>
         </div>
 
-        <div className="flex items-center gap-1 pt-1">
-          <div className="flex-1 flex items-center gap-2 px-3 text-[12px] text-ink-subtle min-w-0">
-            <span className="nl-live-dot text-ok shrink-0" />
-            <span className="truncate">Synced · local adapter</span>
-          </div>
-          <button
-            onClick={() => onTabChange("settings")}
-            aria-label="Settings and logs"
-            aria-current={activeTab === "settings" ? "page" : undefined}
-            className={cn(
-              "size-8 rounded-lg grid place-items-center text-ink-subtle hover:bg-surface-2 hover:text-ink transition-colors",
-              activeTab === "settings" && "bg-surface-2 text-ink"
-            )}
-          >
-            <Settings2 className="size-4" strokeWidth={1.75} />
-          </button>
-        </div>
+        <button
+          onClick={() => onTabChange("settings")}
+          aria-current={activeTab === "settings" ? "page" : undefined}
+          className={cn(
+            "h-9 w-full rounded-lg px-3 flex items-center gap-2.5 text-[13.5px] text-ink-muted hover:bg-surface-2/60 hover:text-ink transition-colors",
+            activeTab === "settings" && "bg-surface-2 text-ink font-medium"
+          )}
+        >
+          <Settings2 className="size-[17px] text-ink-subtle" strokeWidth={1.75} />
+          Settings
+        </button>
       </div>
     </aside>
   );

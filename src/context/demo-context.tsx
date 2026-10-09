@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useSyncExternalStore } from "react";
 import { INITIAL_INCIDENTS, INITIAL_SOS_REQUESTS, type DemoIncident, type DemoSOS } from "@/lib/demo-data";
 import type { BasemapType } from "@/lib/map-styles";
 import type { AppTab } from "@/lib/navigation";
@@ -102,6 +102,59 @@ export const DEMO_LOCALITIES: Locality[] = [
   },
 ];
 
+export interface MapFocusRequest {
+  lat: number;
+  lng: number;
+  zoom?: number;
+  requestedAt: number;
+}
+
+const MAP_PREFS_KEY = "neighbourlink_map_prefs";
+
+interface MapPrefs {
+  basemap: BasemapType;
+  labels: boolean;
+}
+const DEFAULT_PREFS: MapPrefs = { basemap: "street", labels: true };
+const prefListeners = new Set<() => void>();
+let cachedPrefs: { raw: string | null; value: MapPrefs } = { raw: null, value: DEFAULT_PREFS };
+
+function readPrefs(): MapPrefs {
+  let raw: string | null = null;
+  try {
+    raw = localStorage.getItem(MAP_PREFS_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+  if (raw === cachedPrefs.raw) return cachedPrefs.value;
+  let value = DEFAULT_PREFS;
+  try {
+    const p = raw ? JSON.parse(raw) : {};
+    value = {
+      basemap: p.basemap === "satellite" ? "satellite" : "street",
+      labels: typeof p.labels === "boolean" ? p.labels : true,
+    };
+  } catch {
+    /* corrupt value — defaults */
+  }
+  cachedPrefs = { raw, value };
+  return value;
+}
+
+function writePrefs(next: Partial<MapPrefs>) {
+  try {
+    localStorage.setItem(MAP_PREFS_KEY, JSON.stringify({ ...readPrefs(), ...next }));
+  } catch {
+    /* ignore */
+  }
+  prefListeners.forEach((l) => l());
+}
+
+function subscribePrefs(listener: () => void) {
+  prefListeners.add(listener);
+  return () => prefListeners.delete(listener);
+}
+
 export interface LayerFilters {
   officialHazards: boolean;
   riskEstimates: boolean;
@@ -142,6 +195,14 @@ interface DemoContextType {
   setIs3D: (is3D: boolean) => void;
   basemapType: BasemapType;
   setBasemapType: (type: BasemapType) => void;
+  satelliteLabels: boolean;
+  setSatelliteLabels: (on: boolean) => void;
+  /** Point chosen on the map when live location is unavailable. Not persisted. */
+  manualLocation: { lat: number; lng: number } | null;
+  setManualLocation: (loc: { lat: number; lng: number } | null) => void;
+  /** Ask the map to fly somewhere (e.g. "Show on map" from the feed). */
+  mapFocus: MapFocusRequest | null;
+  requestMapFocus: (target: { lat: number; lng: number; zoom?: number }) => void;
   notificationCount: number;
   setNotificationCount: React.Dispatch<React.SetStateAction<number>>;
   incidents: DemoIncident[];
@@ -180,7 +241,19 @@ const DemoContext = createContext<DemoContextType | undefined>(undefined);
 export function DemoProvider({ children }: { children: React.ReactNode }) {
   const [currentRole, setCurrentRole] = useState<Role>("RESIDENT");
   const [currentLocality, setLocality] = useState<Locality>(DEMO_LOCALITIES[0]);
-  const [basemapType, setBasemapType] = useState<BasemapType>("street");
+  const [manualLocation, setManualLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [mapFocus, setMapFocus] = useState<MapFocusRequest | null>(null);
+
+  // Map-type preferences persist per browser. Server render uses defaults.
+  const prefs = useSyncExternalStore(subscribePrefs, readPrefs, () => DEFAULT_PREFS);
+  const basemapType = prefs.basemap;
+  const satelliteLabels = prefs.labels;
+  const setBasemapType = useCallback((t: BasemapType) => writePrefs({ basemap: t }), []);
+  const setSatelliteLabels = useCallback((on: boolean) => writePrefs({ labels: on }), []);
+  const requestMapFocus = useCallback(
+    (t: { lat: number; lng: number; zoom?: number }) => setMapFocus({ ...t, requestedAt: Date.now() }),
+    []
+  );
   const [layerFilters, setLayerFilters] = useState<LayerFilters>({
     officialHazards: true,
     riskEstimates: true,
@@ -234,7 +307,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
   // Fetch SOS requests
   const refreshSOS = useCallback(async () => {
     try {
-      const res = await fetch(`/api/sos?role=${currentRole}&userId=${currentUser.id}`);
+      const res = await fetch(`/api/sos?userId=${encodeURIComponent(currentUser.id)}`);
       if (res.ok) {
         const json = await res.json();
         if (json.success && Array.isArray(json.data)) {
@@ -244,7 +317,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.warn("Failed to fetch /api/sos:", err);
     }
-  }, [currentRole, currentUser.id]);
+  }, [currentUser.id]);
 
   // Fetch notifications
   const refreshNotifications = useCallback(async () => {
@@ -466,6 +539,12 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         setIs3D,
         basemapType,
         setBasemapType,
+        satelliteLabels,
+        setSatelliteLabels,
+        manualLocation,
+        setManualLocation,
+        mapFocus,
+        requestMapFocus,
         notificationCount,
         setNotificationCount,
         incidents,

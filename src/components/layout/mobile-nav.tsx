@@ -48,7 +48,7 @@ export function MobileNav({ activeTab, onTabChange, onOpenReportModal }: MobileN
   return (
     <nav
       aria-label="Primary"
-      className="md:hidden fixed bottom-0 inset-x-0 z-40 h-16 pb-[env(safe-area-inset-bottom)] border-t border-line bg-surface/90 backdrop-blur-xl flex items-stretch"
+      className="md:hidden fixed bottom-0 inset-x-0 z-40 h-[calc(4rem+env(safe-area-inset-bottom))] pb-[env(safe-area-inset-bottom)] border-t border-line bg-surface/90 backdrop-blur-xl flex items-stretch"
     >
       {left.map(renderItem)}
       <div className="flex-1 grid place-items-center">

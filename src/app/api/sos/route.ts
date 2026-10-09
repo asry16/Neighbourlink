@@ -4,10 +4,10 @@ import { SOSService } from "@/services/sos-service";
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const role = searchParams.get("role") || "RESIDENT";
-    const userId = searchParams.get("userId") || undefined;
+    // Any `role` query param is ignored: the role comes from the user record.
+    const userId = searchParams.get("userId");
 
-    const sosRequests = await SOSService.getSOSRequests(role, userId);
+    const sosRequests = await SOSService.getSOSRequestsForViewer(userId);
     return NextResponse.json({ success: true, data: sosRequests });
   } catch (error: any) {
     console.error("GET /api/sos failed:", error);

@@ -44,3 +44,11 @@ export const SOS_CATEGORY_LABEL: Record<DemoSOS["category"], string> = {
 
 export const formatClock = (iso: string) =>
   new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+export const formatDateTime = (iso: string) =>
+  new Date(iso).toLocaleString([], {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });

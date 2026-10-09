@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { SOSService } from "@/services/sos-service";
+import { SOSAuthorizationError, SOSService } from "@/services/sos-service";
 
 export async function POST(
   request: Request,
@@ -27,7 +27,7 @@ export async function POST(
   } catch (error: any) {
     return NextResponse.json(
       { success: false, error: error.message || "Failed to resolve SOS" },
-      { status: 400 }
+      { status: error instanceof SOSAuthorizationError ? 403 : 400 }
     );
   }
 }

@@ -83,41 +83,47 @@ export const SATELLITE_FALLBACK_STYLE: StyleSpecification = {
 
 export type BasemapType = "street" | "satellite";
 
+/** The MapTiler key in use (user override, then env), or null for a full style URL / none. */
+export function getMapTilerKey(apiKeyOrUrl?: string | null): string | null {
+  const input =
+    apiKeyOrUrl?.trim() ||
+    process.env.NEXT_PUBLIC_MAP_API_KEY?.trim() ||
+    process.env.NEXT_PUBLIC_MAPTILER_API_KEY?.trim();
+  if (!input || /^https?:\/\//.test(input)) return null;
+  return input;
+}
+
+/** MapTiler style IDs (verified against the configured key). */
+export const MAPTILER_STYLES = {
+  street: { light: "streets-v2", dark: "streets-v2-dark" },
+  // Hybrid = satellite imagery + road/place labels. Labels can be hidden per
+  // layer, so there is no separate "satellite" style switch.
+  satellite: { light: "hybrid", dark: "hybrid" },
+} as const;
+
+/** Terrain-RGB DEM (Mapbox encoding), used only in 3D. */
+export const terrainTileJsonUrl = (key: string) =>
+  `https://api.maptiler.com/tiles/terrain-rgb-v2/tiles.json?key=${key}`;
+
 /**
- * Returns dynamic map style based on active theme, basemap type ('street' | 'satellite'),
- * and custom Map API Key or Style URL
+ * Basemap style for the current theme and map type. Falls back to open CARTO
+ * / Esri raster tiles when no MapTiler key is configured.
  */
 export function getMapStyle(
   isDark: boolean,
   apiKeyOrUrl?: string | null,
   basemapType: BasemapType = "street"
 ): StyleSpecification | string {
-  const effectiveInput =
-    apiKeyOrUrl?.trim() ||
-    process.env.NEXT_PUBLIC_MAP_API_KEY?.trim() ||
-    process.env.NEXT_PUBLIC_MAPTILER_API_KEY?.trim();
+  const input = apiKeyOrUrl?.trim();
+  // A full style URL is used as-is for street mode.
+  if (input && /^https?:\/\//.test(input) && basemapType === "street") return input;
 
-  if (effectiveInput && effectiveInput.length > 0) {
-    // If user provided a complete JSON style URL directly
-    if (effectiveInput.startsWith("http://") || effectiveInput.startsWith("https://")) {
-      return effectiveInput;
-    }
-
-    // Satellite / Aerial Hybrid mode (High-res imagery with place and road labels)
-    if (basemapType === "satellite") {
-      return `https://api.maptiler.com/maps/hybrid/style.json?key=${effectiveInput}`;
-    }
-
-    // Street mode: MapTiler's neutral "dataviz" styles keep the basemap quiet so
-    // hazard markers carry the colour.
-    return isDark
-      ? `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${effectiveInput}`
-      : `https://api.maptiler.com/maps/dataviz/style.json?key=${effectiveInput}`;
+  const key = getMapTilerKey(apiKeyOrUrl);
+  if (key) {
+    const id = MAPTILER_STYLES[basemapType][isDark ? "dark" : "light"];
+    return `https://api.maptiler.com/maps/${id}/style.json?key=${key}`;
   }
 
-  // Reliable open fallback when no key is set
-  if (basemapType === "satellite") {
-    return SATELLITE_FALLBACK_STYLE;
-  }
+  if (basemapType === "satellite") return SATELLITE_FALLBACK_STYLE;
   return isDark ? DARK_MAP_STYLE : LIGHT_MAP_STYLE;
 }

@@ -12,6 +12,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { useDemo } from "@/context/demo-context";
+import { MapProviderSettings } from "./map-provider-settings";
 
 export function SettingsView() {
   const { currentRole } = useDemo();
@@ -58,6 +59,8 @@ export function SettingsView() {
           Integration status, adapter interfaces and the privacy audit trail.
         </p>
       </header>
+
+      <MapProviderSettings />
 
       {/* Mode Indicator */}
       <div className="p-5 rounded-2xl bg-surface border border-line shadow-xs space-y-4">

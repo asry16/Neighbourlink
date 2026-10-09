@@ -11,6 +11,10 @@ export interface CreateSOSInput {
   contactPhone: string;
 }
 
+export class SOSAuthorizationError extends Error {
+  readonly status = 403;
+}
+
 export class SOSService {
   /**
    * Helper to round coordinates to ~1km precision for civilian privacy
@@ -150,6 +154,33 @@ export class SOSService {
   }
 
   /**
+   * Resolve a viewer's role from the user record. The role is never taken from
+   * the request, so a client cannot claim responder access by asking for it.
+   * Unknown or missing users are treated as the public.
+   *
+   * NOTE: `userId` itself is still client-supplied until real authentication
+   * is added; this closes the `?role=` bypass but not impersonation.
+   */
+  static async getViewerRole(userId?: string | null): Promise<string> {
+    if (!userId) return "PUBLIC";
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    return user?.role ?? "PUBLIC";
+  }
+
+  private static async assertResponder(userId: string) {
+    const role = await this.getViewerRole(userId);
+    if (role !== "RESPONDER" && role !== "ADMIN") {
+      throw new SOSAuthorizationError("Only registered responders can perform this action");
+    }
+  }
+
+  /** SOS list for a viewer, with the role looked up server-side. */
+  static async getSOSRequestsForViewer(userId?: string | null) {
+    const role = await this.getViewerRole(userId);
+    return this.getSOSRequests(role, userId ?? undefined);
+  }
+
+  /**
    * Fetch SOS requests with strict server-side redaction for civilian security
    */
   static async getSOSRequests(role: string, currentUserId?: string) {
@@ -230,6 +261,8 @@ export class SOSService {
     responderUserId: string,
     message: string = "Rescue unit has acknowledged and is preparing deployment."
   ) {
+    await this.assertResponder(responderUserId);
+
     const sos = await prisma.sOSRequest.findUnique({
       where: { id: sosId },
       include: { assignedOrg: true },
@@ -286,6 +319,8 @@ export class SOSService {
     authorUserId: string,
     message: string
   ) {
+    await this.assertResponder(authorUserId);
+
     const sos = await prisma.sOSRequest.findUnique({ where: { id: sosId } });
     if (!sos) throw new Error("SOS Request not found");
 
@@ -322,6 +357,11 @@ export class SOSService {
   static async markResolved(sosId: string, authorUserId: string, message: string = "Evacuation / rescue confirmed complete.") {
     const sos = await prisma.sOSRequest.findUnique({ where: { id: sosId } });
     if (!sos) throw new Error("SOS Request not found");
+
+    // Responders close cases; the requester may also confirm they are safe.
+    if (sos.requesterId !== authorUserId) {
+      await this.assertResponder(authorUserId);
+    }
 
     const updated = await prisma.sOSRequest.update({
       where: { id: sosId },

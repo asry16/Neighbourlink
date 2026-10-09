@@ -28,6 +28,12 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  // Draw under notches / home indicator; layout pads with safe-area insets.
+  viewportFit: "cover",
+  // Let the keyboard resize the layout so forms stay scrollable.
+  interactiveWidget: "resizes-content",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#f7f6f3" },
     { media: "(prefers-color-scheme: dark)", color: "#131210" },
