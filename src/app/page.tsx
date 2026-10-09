@@ -1,69 +1,133 @@
-import Image from "next/image";
+"use client";
+
+import React, { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
+import { TopBar } from "@/components/layout/top-bar";
+import { NavRail } from "@/components/layout/nav-rail";
+import { MobileNav } from "@/components/layout/mobile-nav";
+import { IncidentDrawer } from "@/components/incidents/incident-drawer";
+import { ReportHazardModal } from "@/components/modals/report-hazard-modal";
+import { SosModal } from "@/components/modals/sos-modal";
+import { EmergencyDialog } from "@/components/modals/emergency-dialog";
+import { ListView } from "@/components/views/list-view";
+import { ResponderView } from "@/components/views/responder-view";
+import { SettingsView } from "@/components/views/settings-view";
+import { useDemo } from "@/context/demo-context";
+import { FEED_SECTIONS, isFeedTab } from "@/lib/navigation";
+
+// MapLibre touches window/canvas, so load it client-side only.
+const GeospatialMap = dynamic(
+  () => import("@/components/map/geospatial-map").then((mod) => mod.GeospatialMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-full grid place-items-center nl-backdrop">
+        <div className="flex flex-col items-center gap-3">
+          <div className="size-6 rounded-full border-2 border-line-strong border-t-accent animate-spin" />
+          <span className="nl-eyebrow">Loading map</span>
+        </div>
+      </div>
+    ),
+  }
+);
+
+const isTyping = (el: EventTarget | null) =>
+  el instanceof HTMLElement &&
+  (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
 
 export default function Home() {
+  const {
+    activeTab,
+    setActiveTab,
+    selectedIncidentId,
+    setSelectedIncidentId,
+    isDrawerOpen,
+    setIsDrawerOpen,
+  } = useDemo();
+
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [sosModalOpen, setSosModalOpen] = useState(false);
+  const [emergencyOpen, setEmergencyOpen] = useState(false);
+
+  // "R" opens the report flow from anywhere (shown as a hint in the nav rail).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "r" || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (isTyping(e.target)) return;
+      e.preventDefault();
+      setReportModalOpen(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const handleSelectIncident = (id: string) => {
+    setSelectedIncidentId(id);
+    setIsDrawerOpen(true);
+  };
+
+  const handleShowOnMap = (_coords: { lat: number; lng: number }, id?: string) => {
+    setActiveTab("map");
+    if (id) handleSelectIncident(id);
+  };
+
+  const handleCloseDrawer = () => {
+    setIsDrawerOpen(false);
+    setSelectedIncidentId(null);
+  };
+
+  const openReport = () => setReportModalOpen(true);
+  const openSos = () => setSosModalOpen(true);
+  const openEmergency = () => setEmergencyOpen(true);
+
+  let stage: React.ReactNode;
+  if (activeTab === "responder") stage = <ResponderView />;
+  else if (activeTab === "settings") stage = <SettingsView />;
+  else if (isFeedTab(activeTab))
+    stage = (
+      <ListView
+        focusSection={FEED_SECTIONS[activeTab]}
+        onSelectIncident={handleSelectIncident}
+        onOpenReportModal={openReport}
+        onOpenSosModal={openSos}
+        onShowOnMap={handleShowOnMap}
+      />
+    );
+  else stage = <GeospatialMap onSelectIncident={handleSelectIncident} />;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+    <div className="flex h-dvh w-screen overflow-hidden nl-backdrop">
+      <NavRail
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        onOpenReportModal={openReport}
+        onOpenSosModal={openSos}
+        onOpenEmergency={openEmergency}
+      />
+
+      <div className="flex-1 min-w-0 flex flex-col">
+        <TopBar activeTab={activeTab} onTabChange={setActiveTab} onOpenEmergency={openEmergency} />
+
+        <div className="flex-1 flex overflow-hidden relative">
+          <main className="flex-1 min-w-0 flex flex-col relative overflow-hidden pb-16 md:pb-0">
+            {stage}
+          </main>
+
+          {isDrawerOpen && (
+            <IncidentDrawer
+              incidentId={selectedIncidentId}
+              onClose={handleCloseDrawer}
+              onViewOnMap={(coords) => handleShowOnMap(coords)}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          )}
         </div>
-      </main>
+      </div>
+
+      <MobileNav activeTab={activeTab} onTabChange={setActiveTab} onOpenReportModal={openReport} />
+
+      <ReportHazardModal isOpen={reportModalOpen} onClose={() => setReportModalOpen(false)} />
+      <SosModal isOpen={sosModalOpen} onClose={() => setSosModalOpen(false)} />
+      <EmergencyDialog open={emergencyOpen} onClose={() => setEmergencyOpen(false)} />
     </div>
   );
 }

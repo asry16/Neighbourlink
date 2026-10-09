@@ -1,26 +1,286 @@
 @import "tailwindcss";
+@import "maplibre-gl/dist/maplibre-gl.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:where(.dark, .dark *));
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/* ==========================================================================
+   Neighbourlink design system
+   --------------------------------------------------------------------------
+   1. Palette ramps     — `slate` is re-tuned to a warm graphite neutral and
+                          `sky` to a "lagoon" teal accent, so every legacy
+                          utility in the codebase inherits the new system.
+   2. Semantic tokens   — canvas / surface / line / ink / accent / signal.
+                          New components should use these, not raw ramps.
+   3. Type              — Bricolage Grotesque (display), Instrument Sans (UI),
+                          JetBrains Mono (codes, coordinates, timestamps).
+   ========================================================================== */
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@theme {
+  /* Fonts (variables injected by next/font in layout.tsx) */
+  --font-sans: var(--font-ui), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-heading), var(--font-ui), ui-sans-serif, sans-serif;
+  --font-mono: var(--font-code), ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Warm graphite neutral (replaces blue-tinted slate) */
+  --color-slate-50: oklch(0.985 0.002 85);
+  --color-slate-100: oklch(0.962 0.003 85);
+  --color-slate-200: oklch(0.918 0.004 85);
+  --color-slate-300: oklch(0.858 0.005 85);
+  --color-slate-400: oklch(0.672 0.007 85);
+  --color-slate-500: oklch(0.548 0.008 85);
+  --color-slate-600: oklch(0.445 0.008 85);
+  --color-slate-700: oklch(0.362 0.007 85);
+  --color-slate-800: oklch(0.262 0.005 85);
+  --color-slate-900: oklch(0.198 0.004 85);
+  --color-slate-950: oklch(0.152 0.003 85);
+
+  /* Lagoon accent (replaces generic sky blue) */
+  --color-sky-50: oklch(0.975 0.014 192);
+  --color-sky-100: oklch(0.942 0.034 192);
+  --color-sky-200: oklch(0.888 0.058 192);
+  --color-sky-300: oklch(0.82 0.085 192);
+  --color-sky-400: oklch(0.75 0.105 192);
+  --color-sky-500: oklch(0.655 0.108 192);
+  --color-sky-600: oklch(0.555 0.096 192);
+  --color-sky-700: oklch(0.47 0.082 192);
+  --color-sky-800: oklch(0.39 0.066 192);
+  --color-sky-900: oklch(0.32 0.052 192);
+  --color-sky-950: oklch(0.225 0.038 192);
+
+  /* Semantic tokens → resolved per theme below */
+  --color-canvas: var(--nl-canvas);
+  --color-surface: var(--nl-surface);
+  --color-surface-2: var(--nl-surface-2);
+  --color-surface-3: var(--nl-surface-3);
+  --color-line: var(--nl-line);
+  --color-line-strong: var(--nl-line-strong);
+  --color-ink: var(--nl-ink);
+  --color-ink-muted: var(--nl-ink-muted);
+  --color-ink-subtle: var(--nl-ink-subtle);
+  --color-accent: var(--nl-accent);
+  --color-accent-ink: var(--nl-accent-ink);
+  --color-accent-soft: var(--nl-accent-soft);
+  --color-danger: var(--nl-danger);
+  --color-danger-soft: var(--nl-danger-soft);
+  --color-warn: var(--nl-warn);
+  --color-ok: var(--nl-ok);
+
+  --radius-card: 14px;
+  --shadow-float: 0 1px 0 0 oklch(1 0 0 / 0.04) inset, 0 12px 32px -12px oklch(0.15 0.01 85 / 0.28),
+    0 2px 6px -2px oklch(0.15 0.01 85 / 0.12);
+
+  --animate-rise: rise 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(4px) scale(0.985);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+:root {
+  --nl-canvas: oklch(0.972 0.004 85);
+  --nl-surface: oklch(0.995 0.001 85);
+  --nl-surface-2: oklch(0.962 0.003 85);
+  --nl-surface-3: oklch(0.935 0.004 85);
+  --nl-line: oklch(0.912 0.004 85);
+  --nl-line-strong: oklch(0.858 0.005 85);
+  --nl-ink: oklch(0.205 0.006 85);
+  --nl-ink-muted: oklch(0.44 0.008 85);
+  --nl-ink-subtle: oklch(0.585 0.008 85);
+  --nl-accent: oklch(0.53 0.094 192);
+  --nl-accent-ink: oklch(0.42 0.078 192);
+  --nl-accent-soft: oklch(0.53 0.094 192 / 0.1);
+  --nl-danger: oklch(0.565 0.205 27);
+  --nl-danger-soft: oklch(0.565 0.205 27 / 0.09);
+  --nl-warn: oklch(0.72 0.15 70);
+  --nl-ok: oklch(0.6 0.13 158);
+  --nl-grid-dot: oklch(0.2 0.01 85 / 0.07);
+  --nl-glow: oklch(0.75 0.08 192 / 0.16);
+  color-scheme: light;
+}
+
+.dark {
+  --nl-canvas: oklch(0.142 0.003 85);
+  --nl-surface: oklch(0.178 0.004 85);
+  --nl-surface-2: oklch(0.212 0.004 85);
+  --nl-surface-3: oklch(0.25 0.005 85);
+  --nl-line: oklch(0.255 0.004 85);
+  --nl-line-strong: oklch(0.32 0.005 85);
+  --nl-ink: oklch(0.955 0.003 85);
+  --nl-ink-muted: oklch(0.74 0.006 85);
+  --nl-ink-subtle: oklch(0.58 0.007 85);
+  --nl-accent: oklch(0.76 0.11 192);
+  --nl-accent-ink: oklch(0.82 0.09 192);
+  --nl-accent-soft: oklch(0.76 0.11 192 / 0.12);
+  --nl-danger: oklch(0.64 0.2 25);
+  --nl-danger-soft: oklch(0.64 0.2 25 / 0.14);
+  --nl-warn: oklch(0.8 0.14 75);
+  --nl-ok: oklch(0.74 0.13 158);
+  --nl-grid-dot: oklch(1 0 0 / 0.045);
+  --nl-glow: oklch(0.6 0.09 192 / 0.13);
+  color-scheme: dark;
+}
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+  }
+
+  body {
+    background-color: var(--nl-canvas);
+    color: var(--nl-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Headings use the display face; tight tracking reads as intentional. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.012em;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--nl-accent);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  ::selection {
+    background: var(--nl-accent-soft);
+    color: var(--nl-ink);
+  }
+
+  /* Quiet, theme-aware scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--nl-line-strong) transparent;
+  }
+}
+
+@layer components {
+  /* Dotted blueprint grid with a soft accent glow — the app's backdrop. */
+  .nl-backdrop {
+    background-color: var(--nl-canvas);
+    background-image:
+      radial-gradient(60rem 30rem at 85% -10%, var(--nl-glow), transparent 70%),
+      radial-gradient(40rem 24rem at -10% 110%, var(--nl-glow), transparent 70%),
+      radial-gradient(circle at 1px 1px, var(--nl-grid-dot) 1px, transparent 0);
+    background-size:
+      auto,
+      auto,
+      22px 22px;
+    background-attachment: fixed;
+  }
+
+  /* Small uppercase section label */
+  .nl-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--nl-ink-subtle);
+  }
+
+  /* Floating glass panel for overlays on the map */
+  .nl-glass {
+    background: color-mix(in oklch, var(--nl-surface) 86%, transparent);
+    backdrop-filter: blur(14px) saturate(1.4);
+    -webkit-backdrop-filter: blur(14px) saturate(1.4);
+    border: 1px solid var(--nl-line);
+    box-shadow: var(--shadow-float);
+  }
+
+  /* Live indicator: a steady dot with a single soft ring, not a strobe. */
+  .nl-live-dot {
+    position: relative;
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: currentColor;
+  }
+  .nl-live-dot::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: inherit;
+    border: 1px solid currentColor;
+    opacity: 0;
+    animation: nl-ring 2.4s ease-out infinite;
+  }
+  @keyframes nl-ring {
+    0% {
+      transform: scale(0.6);
+      opacity: 0.7;
+    }
+    100% {
+      transform: scale(1.8);
+      opacity: 0;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   MapLibre overrides
+   -------------------------------------------------------------------------- */
+.maplibregl-popup-content {
+  border-radius: 12px !important;
+  padding: 0 !important;
+  background: var(--nl-surface) !important;
+  color: var(--nl-ink) !important;
+  border: 1px solid var(--nl-line) !important;
+  box-shadow: var(--shadow-float) !important;
+  overflow: hidden !important;
+  font-family: var(--font-sans);
+}
+
+.maplibregl-popup-close-button {
+  padding: 4px 8px !important;
+  color: var(--nl-ink-subtle) !important;
+  font-size: 16px !important;
+}
+
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.maplibregl-popup-tip {
+  border-top-color: var(--nl-surface) !important;
+}
+
+.maplibregl-ctrl-attrib {
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  background: color-mix(in oklch, var(--nl-surface) 80%, transparent) !important;
+  color: var(--nl-ink-subtle);
+  border-radius: 8px 0 0 0;
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--nl-ink-muted) !important;
 }

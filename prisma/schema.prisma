@@ -1,0 +1,208 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String
+  role          String    @default("RESIDENT") // RESIDENT, RESPONDER, ADMIN
+  phone         String?
+  avatarUrl     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  subscriptions AreaSubscription[]
+  incidents     Incident[]
+  observations  Observation[]
+  disputes      Dispute[]
+  sosRequests   SOSRequest[]        @relation("Requester")
+  sosUpdates    SOSUpdate[]
+  responderOrg  ResponderOrganisation? @relation(fields: [responderOrgId], references: [id])
+  responderOrgId String?
+  notifications Notification[]
+  auditLogs     AuditEvent[]
+}
+
+model AreaSubscription {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  latitude    Float
+  longitude   Float
+  radiusKm    Float    @default(5.0)
+  createdAt   DateTime @default(now())
+}
+
+model ResponderOrganisation {
+  id              String   @id @default(cuid())
+  name            String
+  code            String   @unique
+  verified        Boolean  @default(true)
+  contactPhone    String
+  serviceAreaName String
+  centerLat       Float
+  centerLng       Float
+  radiusKm        Float    @default(15.0)
+  capabilities    String   // JSON array of strings e.g. ["WATER_RESCUE", "FIRST_AID"]
+  members         User[]
+  assignedSOS     SOSRequest[]
+  createdAt       DateTime @default(now())
+}
+
+model HazardUpdate {
+  id          String   @id @default(cuid())
+  source      String   // e.g. "Regional Meteorological Centre (IMD)"
+  sourceUrl   String?
+  isDemo      Boolean  @default(true)
+  hazardType  String   // FLOOD_WATERLOGGING, LANDSLIDE, STORM_DAMAGE, EARTHQUAKE_OBSERVATION, OTHER_HAZARD
+  severity    String   // ADVISORY, WARNING, CRITICAL
+  headline    String
+  description String
+  affectedArea String
+  centerLat   Float
+  centerLng   Float
+  radiusKm    Float
+  issuedAt    DateTime
+  expiresAt   DateTime
+  fetchedAt   DateTime @default(now())
+}
+
+model RiskEstimate {
+  id               String   @id @default(cuid())
+  modelName        String   @default("Experimental Rule-Based Flood Engine v1.0")
+  localityName     String
+  centerLat        Float
+  centerLng        Float
+  riskLevel        String   // LOW, ELEVATED, HIGH, INSUFFICIENT_DATA
+  rainfallRecentMm Float?
+  rainfallForecastMm Float?
+  waterLevelMeters Float?
+  historicalSusceptibility Boolean @default(false)
+  horizonHours     Int      @default(24)
+  explanation      String
+  evaluatedAt      DateTime @default(now())
+  isDemo           Boolean  @default(true)
+}
+
+model Incident {
+  id             String      @id @default(cuid())
+  trackingCode   String      @unique // e.g. "INC-2026-0042"
+  category       String      // FLOOD_WATERLOGGING, LANDSLIDE, STORM_DAMAGE, EARTHQUAKE_OBSERVATION, OTHER_HAZARD
+  categoryLabel  String
+  latitude       Float
+  longitude      Float
+  localityName   String
+  description    String
+  reportedImpact String
+  status         String      @default("UNVERIFIED") // UNVERIFIED, CORROBORATED, DISPUTED, RESOLVED
+  observedAt     DateTime
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  reporterId     String
+  reporter       User        @relation(fields: [reporterId], references: [id])
+  
+  observations   Observation[]
+  disputes       Dispute[]
+  evidence       Evidence[]
+}
+
+model Observation {
+  id             String    @id @default(cuid())
+  incidentId     String
+  incident       Incident  @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User      @relation(fields: [userId], references: [id])
+  type           String    @default("CORROBORATION") // INITIAL_REPORT, CORROBORATION, STATUS_UPDATE, RESOLVED_REPORT
+  comment        String
+  observedAt     DateTime
+  createdAt      DateTime  @default(now())
+  evidence       Evidence[]
+}
+
+model Dispute {
+  id         String   @id @default(cuid())
+  incidentId String
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  reason     String
+  comment    String
+  createdAt  DateTime @default(now())
+}
+
+model Evidence {
+  id            String       @id @default(cuid())
+  fileUrl       String
+  fileName      String
+  mimeType      String
+  sizeBytes     Int
+  incidentId    String?
+  incident      Incident?    @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  observationId String?
+  observation   Observation? @relation(fields: [observationId], references: [id], onDelete: Cascade)
+  uploadedAt    DateTime     @default(now())
+}
+
+model SOSRequest {
+  id             String               @id @default(cuid())
+  trackingCode   String               @unique // e.g. "SOS-2026-0901"
+  requesterId    String
+  requester      User                 @relation("Requester", fields: [requesterId], references: [id])
+  latitude       Float                // Precise coordinates
+  longitude      Float                // Precise coordinates
+  fuzzyLatitude  Float                // Rounded for public civilian view (~1km)
+  fuzzyLongitude Float                // Rounded for public civilian view (~1km)
+  localityName   String
+  category       String               // TRAPPED_FLOOD, MEDICAL, EVACUATION, SUPPLIES
+  peopleCount    Int                  @default(1)
+  description    String
+  contactPhone   String
+  status         String               @default("REQUESTED") // REQUESTED, ACKNOWLEDGED, ASSISTANCE_REPORTED, RESOLVED, CANCELLED
+  assignedOrgId  String?
+  assignedOrg    ResponderOrganisation? @relation(fields: [assignedOrgId], references: [id])
+  updates        SOSUpdate[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+}
+
+model SOSUpdate {
+  id          String     @id @default(cuid())
+  sosId       String
+  sos         SOSRequest @relation(fields: [sosId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User       @relation(fields: [authorId], references: [id])
+  status      String
+  message     String
+  createdAt   DateTime   @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  type      String   // HAZARD_ALERT, CORROBORATION, SOS_DISPATCH, SOS_UPDATE
+  link      String?
+  status    String   @default("SENT") // QUEUED, SENT, FAILED
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model AuditEvent {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String
+  entityType String
+  entityId   String
+  payload    String   // JSON string
+  createdAt  DateTime @default(now())
+}
