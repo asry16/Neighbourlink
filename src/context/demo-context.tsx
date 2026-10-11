@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { INITIAL_INCIDENTS, INITIAL_SOS_REQUESTS, type DemoIncident, type DemoSOS } from "@/lib/demo-data";
 import type { BasemapType } from "@/lib/map-styles";
 import { useLiveLocation, type LiveLocation, type LocationStatus } from "@/lib/use-live-location";
+import type { LiveHazardsResponse } from "@/lib/live-types";
 
 export type Role = "RESIDENT" | "RESPONDER" | "ADMIN";
 
@@ -69,9 +70,22 @@ export interface Locality {
   lng: number;
   lat: number;
   zoom: number;
+  /** A country / state overview: too broad to place a report or SOS. */
+  isOverview?: boolean;
 }
 
+export const INDIA_OVERVIEW: Locality = {
+  id: "india",
+  name: "India (All States)",
+  description: "Live cyclone, flood and earthquake alerts nationwide",
+  lng: 80.5,
+  lat: 22.6,
+  zoom: 4.1,
+  isOverview: true,
+};
+
 export const DEMO_LOCALITIES: Locality[] = [
+  INDIA_OVERVIEW,
   {
     id: "all-kolkata",
     name: "Kolkata Metro (All Sectors)",
@@ -181,6 +195,8 @@ export interface LayerFilters {
   communityReports: boolean;
   sosAreas: boolean;
   helpCentres: boolean;
+  /** Real USGS / GDACS events across India. */
+  liveFeeds: boolean;
 }
 
 export interface NotificationItem {
@@ -221,6 +237,9 @@ interface DemoContextType {
   /** Point chosen on the map when live location is unavailable. Not persisted. */
   manualLocation: { lat: number; lng: number } | null;
   setManualLocation: (loc: { lat: number; lng: number } | null) => void;
+  liveHazards: LiveHazardsResponse | null;
+  liveHazardsError: boolean;
+  refreshLiveHazards: () => Promise<void>;
   /** Ask the map to fly somewhere (e.g. "Show on map" from the feed). */
   mapFocus: MapFocusRequest | null;
   requestMapFocus: (target: { lat: number; lng: number; zoom?: number }) => void;
@@ -262,7 +281,7 @@ const DemoContext = createContext<DemoContextType | undefined>(undefined);
 
 export function DemoProvider({ children }: { children: React.ReactNode }) {
   const [currentUserId, setCurrentUserId] = useState<string>(DEMO_USERS.RESIDENT.id);
-  const [currentLocality, setLocality] = useState<Locality>(DEMO_LOCALITIES[0]);
+  const [currentLocality, setLocality] = useState<Locality>(INDIA_OVERVIEW);
   const [manualLocation, setManualLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [mapFocus, setMapFocus] = useState<MapFocusRequest | null>(null);
 
@@ -282,7 +301,10 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
     communityReports: true,
     sosAreas: true,
     helpCentres: true,
+    liveFeeds: true,
   });
+  const [liveHazards, setLiveHazards] = useState<LiveHazardsResponse | null>(null);
+  const [liveHazardsError, setLiveHazardsError] = useState(false);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const live = useLiveLocation();
@@ -369,6 +391,24 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
     refreshSOS();
     refreshNotifications();
   }, [refreshIncidents, refreshSOS, refreshNotifications]);
+
+  // Live disaster feeds across India (server caches for 10 minutes).
+  const refreshLiveHazards = useCallback(async () => {
+    try {
+      const res = await fetch("/api/live-hazards");
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error);
+      setLiveHazards(json.data);
+      setLiveHazardsError(false);
+    } catch {
+      setLiveHazardsError(true);
+    }
+  }, []);
+  useEffect(() => {
+    void refreshLiveHazards();
+    const id = setInterval(() => void refreshLiveHazards(), 10 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [refreshLiveHazards]);
 
   const corroborateIncident = async (id: string, comment: string = "Corroborated current condition") => {
     try {
@@ -568,6 +608,9 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         currentUser,
         setRole,
         setCurrentUserId,
+        liveHazards,
+        liveHazardsError,
+        refreshLiveHazards,
         currentLocality,
         setLocality,
         layerFilters,

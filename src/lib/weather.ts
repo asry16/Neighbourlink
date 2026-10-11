@@ -155,6 +155,7 @@ export const WEATHER_PREVIEWS: Record<string, { label: string; weather: Partial<
   night: { label: "Clear night", weather: { weatherCode: 0, cloudCoverPct: 10, precipitationMm: 0, isDay: false, windKmh: 6, temperatureC: 26, feelsLikeC: 28 } },
   heat: { label: "Heatwave", weather: { weatherCode: 1, cloudCoverPct: 10, precipitationMm: 0, isDay: true, windKmh: 6, temperatureC: 41, feelsLikeC: 47 } },
   overcast: { label: "Overcast", weather: { weatherCode: 3, cloudCoverPct: 100, precipitationMm: 0, isDay: true, windKmh: 12 } },
+  smog: { label: "Severe smog (AQI)", weather: { weatherCode: 1, cloudCoverPct: 20, precipitationMm: 0, isDay: true, windKmh: 3, temperatureC: 16, feelsLikeC: 16 } },
   fog: { label: "Fog", weather: { weatherCode: 45, cloudCoverPct: 100, precipitationMm: 0, isDay: true, windKmh: 3, humidityPct: 98 } },
   windy: { label: "Strong wind", weather: { weatherCode: 2, cloudCoverPct: 45, precipitationMm: 0, isDay: true, windKmh: 55 } },
   drizzle: { label: "Drizzle", weather: { weatherCode: 53, cloudCoverPct: 90, precipitationMm: 0.3, isDay: true, windKmh: 10 } },

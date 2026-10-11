@@ -6,14 +6,18 @@ import { useDemo } from "@/context/demo-context";
 import { useOverlay, type LatLng } from "@/context/overlay-context";
 import { formatAccuracy } from "@/lib/use-live-location";
 
-export type PickedLocation = LatLng & { source: "live" | "manual" | "area" | "picked" };
+export type PickedLocation = LatLng & {
+  source: "live" | "manual" | "area" | "picked";
+  /** The area is a country / state overview, too broad to place anything. */
+  tooBroad?: boolean;
+};
 
 /** Default position: live GPS, else a point set on the map, else the area centre. */
 export function useDefaultPosition(): PickedLocation {
   const { liveLocation, manualLocation, currentLocality } = useDemo();
   if (liveLocation) return { lat: liveLocation.lat, lng: liveLocation.lng, source: "live" };
   if (manualLocation) return { ...manualLocation, source: "manual" };
-  return { lat: currentLocality.lat, lng: currentLocality.lng, source: "area" };
+  return { lat: currentLocality.lat, lng: currentLocality.lng, source: "area", tooBroad: currentLocality.isOverview };
 }
 
 const SOURCE_LABEL: Record<PickedLocation["source"], string> = {
@@ -56,7 +60,9 @@ export function LocationField({
           <MapPin className="size-4 mt-0.5 shrink-0 text-ink-subtle" />
         )}
         <div className="min-w-0 flex-1 text-[13px]">
-          <div className="text-ink font-medium">{SOURCE_LABEL[current.source]}</div>
+          <div className="text-ink font-medium">
+            {current.tooBroad ? "Where are you? Use your location or choose on the map" : SOURCE_LABEL[current.source]}
+          </div>
           <div className="font-mono text-[12px] text-ink-subtle">
             {current.lat.toFixed(5)}, {current.lng.toFixed(5)}
             {current.source === "live" && liveLocation && ` · ${formatAccuracy(liveLocation.accuracy)}`}

@@ -30,12 +30,14 @@ import {
   detailsButtonHTML,
   esc,
   labelHTML,
+  liveHazardHTML,
   manualLocationHTML,
   pickPinHTML,
   pinHTML,
   popupHTML,
   sosAreaHTML,
   sosPinHTML,
+  sourceLinkHTML,
   userLocationHTML,
   wireDetailsButton,
 } from "./marker-html";
@@ -88,6 +90,7 @@ export function GeospatialMap() {
     setIs3D,
     incidents,
     sosRequests,
+    liveHazards,
     liveLocation,
     locationStatus,
     locationError,
@@ -766,6 +769,38 @@ export function GeospatialMap() {
       });
     }
 
+    // Live India feeds (USGS earthquakes, GDACS cyclones / floods / droughts)
+    if (layerFilters.liveFeeds && liveHazards) {
+      liveHazards.hazards.forEach((h) => {
+        const el = document.createElement("div");
+        el.className = "marker-live cursor-pointer";
+        el.innerHTML = liveHazardHTML(h);
+        const when = new Date(h.startedAt);
+        const status = h.isCurrent
+          ? "Active"
+          : h.endedAt
+            ? `Ended ${formatDateTime(h.endedAt)}`
+            : "Past event";
+        const popup = new maplibregl.Popup({ offset: 22 }).setHTML(
+          popupHTML({
+            badge: `Live · ${h.source} · ${humanize(h.type)}`,
+            tone: h.alertLevel === "RED" ? "danger" : h.alertLevel === "ORANGE" ? "warn" : "accent",
+            code: h.alertLevel ? `${h.alertLevel} alert` : undefined,
+            title: h.title,
+            body: esc(h.detail),
+            meta: `${esc(status)} · started ${esc(formatDateTime(when.toISOString()))}<br/>Real-time public feed, not a Neighbourlink report.`,
+            footer: sourceLinkHTML(h.url, h.source === "USGS" ? "USGS event page" : "GDACS report"),
+          })
+        );
+        el.dataset.id = h.id;
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat([h.longitude, h.latitude])
+          .setPopup(popup)
+          .addTo(map.current!);
+        markersRef.current.push(marker);
+      });
+    }
+
     // Update count of markers visible in viewport
     updateVisibleCount();
   }, [
@@ -774,6 +809,7 @@ export function GeospatialMap() {
     currentRole,
     incidents,
     sosRequests,
+    liveHazards,
     updateVisibleCount,
     openOverlay,
   ]);

@@ -6,19 +6,22 @@ const cache = new Map<string, { at: number; data: PlaceResult[] }>();
 
 /** City / place search via Open-Meteo's free geocoder (no key). */
 export async function GET(request: Request) {
-  const q = new URL(request.url).searchParams.get("q")?.trim() ?? "";
+  const params = new URL(request.url).searchParams;
+  const q = params.get("q")?.trim() ?? "";
+  // Optional ISO-3166 alpha-2 filter, e.g. "IN" for places in India only.
+  const country = /^[A-Za-z]{2}$/.test(params.get("country") ?? "") ? params.get("country")!.toUpperCase() : null;
   if (q.length < 2 || q.length > 80) {
     return NextResponse.json({ success: true, data: [] });
   }
 
-  const key = q.toLowerCase();
+  const key = `${country ?? "*"}|${q.toLowerCase()}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
     return NextResponse.json({ success: true, data: hit.data });
   }
 
   try {
-    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=6&language=en&format=json`;
+    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=8&language=en&format=json${country ? `&countryCode=${country}` : ""}`;
     const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8000) });
     if (!res.ok) throw new Error(`Geocoder responded ${res.status}`);
     const json = await res.json();

@@ -25,6 +25,8 @@ import {
 import { createWalker3D, WALKER_LAYER_ID, type Walker3D } from "./walker-3d";
 import { WeatherOverlay } from "./weather-overlay";
 import type { WalkStart } from "./walk-start-dialog";
+import { NAQI_TONE, smogLevel } from "@/lib/air-quality";
+import type { LocalConditions } from "@/lib/live-types";
 import {
   compassPoint,
   skyFor,
@@ -150,6 +152,7 @@ export function WalkMode({
   const [weather, setWeather] = useState<CurrentWeather | null>(null);
   const [weatherStatus, setWeatherStatus] = useState<"loading" | "ok" | "error">("loading");
   const [updatingWeather, setUpdatingWeather] = useState(false);
+  const [conditions, setConditions] = useState<LocalConditions | null>(null);
   const [preview, setPreview] = useState<keyof typeof WEATHER_PREVIEWS | "live">("live");
   const weatherCellRef = useRef(weatherCell(start));
   const weatherInFlight = useRef(false);
@@ -164,11 +167,17 @@ export function WalkMode({
     weatherCellRef.current = weatherCell(at);
     setUpdatingWeather(true);
     try {
-      const res = await fetch(`/api/weather?lat=${at.lat.toFixed(4)}&lng=${at.lng.toFixed(4)}`);
+      const q = `lat=${at.lat.toFixed(4)}&lng=${at.lng.toFixed(4)}`;
+      // Air quality and flood risk are extras; weather alone is enough to show.
+      const [res, cond] = await Promise.all([
+        fetch(`/api/weather?${q}`),
+        fetch(`/api/conditions?${q}`).then((r) => r.json()).catch(() => null),
+      ]);
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.error);
       setWeather(json.data);
       setWeatherStatus("ok");
+      if (cond?.success) setConditions(cond.data);
     } catch {
       setWeatherStatus((s) => (s === "ok" ? "ok" : "error"));
     } finally {
@@ -199,6 +208,12 @@ export function WalkMode({
   );
   const scene = useMemo(() => (shown ? weatherScene(shown) : null), [shown]);
   const sceneRef = useRef(scene);
+  const aq = conditions?.airQuality ?? null;
+  // The smog preview simulates a Severe-AQI day (labelled as a preview).
+  const smog = preview === "smog" ? smogLevel("Severe") : aq ? smogLevel(aq.category) : 0;
+  const masked = smog >= 0.35;
+  const maskedRef = useRef(masked);
+  const flood = conditions?.floodRisk ?? null;
 
   // Character outfit / lighting and the map's sky follow the weather.
   useEffect(() => {
@@ -207,9 +222,10 @@ export function WalkMode({
     const daylight = scene.isDay
       ? Math.max(0.3, 1 - scene.cloudCover * 0.4 - (scene.precip === "none" ? 0 : 0.2) - scene.fog * 0.2)
       : 0.12;
-    walkerRef.current?.setWeather({ precip: scene.precip, daylight });
+    maskedRef.current = masked;
+    walkerRef.current?.setWeather({ precip: scene.precip, daylight: daylight * (1 - smog * 0.3), mask: masked });
     map.setSky(skyFor(scene));
-  }, [scene, map]);
+  }, [scene, map, smog, masked]);
 
   // 3D character, camera and movement loop live for the whole walk.
   useEffect(() => {
@@ -228,7 +244,12 @@ export function WalkMode({
       }
       walkerRef.current = w;
       const sc = sceneRef.current;
-      if (sc) w.setWeather({ precip: sc.precip, daylight: sc.isDay ? 1 - sc.cloudCover * 0.4 : 0.12 });
+      if (sc)
+        w.setWeather({
+          precip: sc.precip,
+          daylight: sc.isDay ? 1 - sc.cloudCover * 0.4 : 0.12,
+          mask: maskedRef.current,
+        });
       addLayer();
       setLoading3D(false);
     });
@@ -403,7 +424,7 @@ export function WalkMode({
 
   return (
     <>
-      {scene && <WeatherOverlay scene={scene} getBearing={getBearing} />}
+      {scene && <WeatherOverlay scene={scene} getBearing={getBearing} smog={smog} />}
 
       {/* Status, weather and proximity (top-centre) */}
       <div className="absolute top-3 md:top-4 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 w-[min(27rem,calc(100%-7rem))] pointer-events-none">
@@ -463,6 +484,33 @@ export function WalkMode({
                     <RefreshCw className="size-3.5 shrink-0 text-ink-subtle animate-spin" aria-label="Updating weather" />
                   )}
                 </div>
+                {(aq || (flood && flood.riskLevel !== "INSUFFICIENT_DATA")) && (
+                  <div className="flex flex-wrap items-center gap-1.5 text-[11.5px]">
+                    {aq && (
+                      <span
+                        className={`px-1.5 py-0.5 rounded font-semibold ${NAQI_TONE[aq.category]}`}
+                        title={`India AQI ${aq.aqi} (${aq.category}), driven by ${aq.dominant}. CPCB method from CAMS model data.`}
+                      >
+                        AQI {aq.aqi} · {aq.category}
+                      </span>
+                    )}
+                    {masked && <span className="text-ink-subtle">mask on</span>}
+                    {flood && flood.riskLevel !== "INSUFFICIENT_DATA" && (
+                      <span
+                        className={`px-1.5 py-0.5 rounded font-semibold ${
+                          flood.riskLevel === "HIGH"
+                            ? "bg-red-600 text-white"
+                            : flood.riskLevel === "ELEVATED"
+                              ? "bg-amber-400 text-black"
+                              : "bg-surface-2 text-ink-muted"
+                        }`}
+                        title={flood.explanation}
+                      >
+                        Flood risk {flood.riskLevel.toLowerCase()}
+                      </span>
+                    )}
+                  </div>
+                )}
                 <div className="flex items-center gap-2 text-[11px]">
                   {preview === "live" ? (
                     <span className="flex items-center gap-1.5 text-ink-subtle min-w-0 truncate">

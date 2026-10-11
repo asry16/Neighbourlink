@@ -69,9 +69,13 @@ export function SosModal({ isOpen, onClose, hidden }: SosModalProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
     setErrorMsg(null);
     const where = location ?? fallbackPosition;
+    if (where.tooBroad) {
+      setErrorMsg("Set your location so responders can find you: use your location or choose on the map. In danger now? Call 112.");
+      return;
+    }
+    setIsSubmitting(true);
     const res = await submitSOS({
       category,
       peopleCount,

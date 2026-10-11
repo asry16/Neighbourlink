@@ -37,7 +37,16 @@ const approach = (cur: number, target: number, dt: number) =>
  * fog haze, rain / drizzle / snow / hail, wind streaks and lightning. Driven
  * by a WeatherScene; motion follows the real wind relative to the camera.
  */
-export function WeatherOverlay({ scene, getBearing }: { scene: WeatherScene; getBearing: () => number }) {
+export function WeatherOverlay({
+  scene,
+  getBearing,
+  smog = 0,
+}: {
+  scene: WeatherScene;
+  getBearing: () => number;
+  /** Air-pollution haze, 0..1 (from the India AQI category). */
+  smog?: number;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const flashRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef(scene);
@@ -322,6 +331,15 @@ export function WeatherOverlay({ scene, getBearing }: { scene: WeatherScene; get
         }}
       />
       <div className={tint} style={{ background: "rgb(255 140 50 / 0.12)", opacity: scene.hot ? 1 : 0 }} />
+      {/* Smog: brown-grey haze, densest at the horizon */}
+      <div
+        className={tint}
+        style={{
+          background:
+            "linear-gradient(to bottom, rgb(150 128 96 / 0.85), rgb(140 122 98 / 0.45) 50%, rgb(120 108 92 / 0.25))",
+          opacity: smog,
+        }}
+      />
       <canvas ref={canvasRef} className="absolute inset-0 size-full" />
       <div ref={flashRef} className="absolute inset-0 bg-white opacity-0" />
     </div>

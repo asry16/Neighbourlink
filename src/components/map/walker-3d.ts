@@ -24,6 +24,8 @@ export interface WalkerWeather {
   precip: PrecipKind;
   /** 0 night to 1 bright clear day; dims the character's lighting. */
   daylight: number;
+  /** Poor air: the character wears a face mask. */
+  mask?: boolean;
 }
 
 export interface Walker3D {
@@ -88,6 +90,14 @@ export async function createWalker3D(map: maplibregl.Map, start: WalkerPose): Pr
   const nose = new THREE.Mesh(geo(new THREE.SphereGeometry(0.025, 8, 6)), skin);
   nose.position.set(0, 1.65, 0.12);
   body.add(nose);
+  const faceMask = new THREE.Mesh(
+    geo(new THREE.SphereGeometry(0.105, 14, 8, -Math.PI / 2.6, Math.PI / 1.3, Math.PI / 2, Math.PI / 3.2)),
+    mat(0xf4f6f8, { side: THREE.DoubleSide, roughness: 0.9 })
+  );
+  faceMask.position.set(0, 1.66, 0.025);
+  faceMask.scale.setScalar(1.12);
+  faceMask.visible = false;
+  body.add(faceMask);
   const backpack = new THREE.Mesh(geo(new THREE.BoxGeometry(0.28, 0.34, 0.14)), bag);
   backpack.position.set(0, 1.28, -0.22);
   body.add(backpack);
@@ -168,6 +178,7 @@ export async function createWalker3D(map: maplibregl.Map, start: WalkerPose): Pr
     torso.material = top;
     sleeves.forEach((sleeve) => (sleeve.material = top));
     umbrella.visible = raining;
+    faceMask.visible = !!weather.mask;
     sky.intensity = 0.55 + weather.daylight * 1.05;
     sun.intensity = 0.25 + weather.daylight * 1.35;
   };

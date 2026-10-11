@@ -45,7 +45,7 @@ export function WalkStartDialog({
       setSearching(true);
       setSearchError(null);
       try {
-        const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+        const res = await fetch(`/api/geocode?country=IN&q=${encodeURIComponent(q)}`);
         const json = await res.json();
         if (id !== requestId.current) return;
         if (!res.ok || !json.success) throw new Error(json.error);
@@ -124,7 +124,7 @@ export function WalkStartDialog({
 
         <div>
           <label htmlFor="walk-city" className="block text-[13px] font-medium text-ink mb-1.5">
-            Enter your city or area
+            Enter your city or town in India
           </label>
           <div className="relative">
             <Search className="size-4 text-ink-subtle absolute left-3 top-1/2 -translate-y-1/2" />
@@ -144,7 +144,7 @@ export function WalkStartDialog({
                   onStart({ lat: p.latitude, lng: p.longitude, label: placeLabel(p) });
                 }
               }}
-              placeholder="e.g. Kolkata, Darjeeling, Mumbai"
+              placeholder="e.g. Delhi, Guwahati, Chennai, Shimla"
               className="w-full h-11 pl-9 pr-3 rounded-lg border border-line bg-surface text-[14px] text-ink focus:outline-none focus:border-accent focus:ring-[3px] focus:ring-accent-soft"
             />
           </div>
