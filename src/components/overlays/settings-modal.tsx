@@ -4,8 +4,10 @@ import React from "react";
 import { Check, Star } from "lucide-react";
 import { Dialog } from "@/components/ui/dialog";
 import { ThemeSwitcher } from "@/components/theme-toggle";
+import { GoogleLogo } from "@/components/modals/auth-modal";
 import { MapProviderSettings } from "@/components/views/map-provider-settings";
 import { useDemo, DEMO_LOCALITIES, type Role } from "@/context/demo-context";
+import { useOverlay } from "@/context/overlay-context";
 import {
   DEFAULT_NOTIFY_PREFS,
   NOTIFY_PREFS_KEY,
@@ -37,7 +39,8 @@ const knobCls = (on: boolean) =>
   `absolute top-0.5 size-4 rounded-full bg-white shadow transition-[left] ${on ? "left-[18px]" : "left-0.5"}`;
 
 export function SettingsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { currentUser, currentRole, setRole, currentLocality, setLocality } = useDemo();
+  const { authUser, logout, currentUser, currentRole, setRole, currentLocality, setLocality } = useDemo();
+  const { open: openOverlay } = useOverlay();
   const [saved, setSaved] = useLocalPref<string[]>(SAVED_AREAS_KEY, []);
   const [notify, setNotify] = useLocalPref<NotificationPrefs>(NOTIFY_PREFS_KEY, DEFAULT_NOTIFY_PREFS);
 
@@ -46,6 +49,54 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
 
   return (
     <Dialog open={open} onClose={onClose} title="Settings" size="sm">
+      <Section title="Account & Verification">
+        {authUser ? (
+          <div className="p-3 rounded-xl border border-line bg-surface-2 space-y-2.5">
+            <div className="flex items-center gap-3">
+              {authUser.avatarUrl ? (
+                <img src={authUser.avatarUrl} alt={authUser.name} className="size-10 rounded-full object-cover ring-1 ring-line" />
+              ) : (
+                <div className="size-10 rounded-full bg-accent text-accent-ink font-semibold grid place-items-center text-sm">
+                  {authUser.name[0]}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="text-[13.5px] font-semibold text-ink flex items-center gap-1.5">
+                  <span className="truncate">{authUser.name}</span>
+                  <span className="px-1.5 py-0.5 rounded text-[10.5px] font-medium bg-ok-soft text-ok border border-ok/30">Verified</span>
+                </div>
+                <div className="text-[12px] text-ink-subtle truncate">{authUser.email}</div>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                onClose();
+                void logout();
+              }}
+              className="w-full h-8.5 rounded-lg border border-danger/30 text-danger hover:bg-danger-soft text-[12px] font-medium transition-colors"
+            >
+              Sign out of Google
+            </button>
+          </div>
+        ) : (
+          <div className="p-3 rounded-xl border border-line bg-surface-2 space-y-2.5">
+            <p className="text-[12px] text-ink-subtle leading-relaxed">
+              Sign in with your Google account for verified civic contributions and emergency dispatches.
+            </p>
+            <button
+              onClick={() => {
+                onClose();
+                void openOverlay({ kind: "auth" });
+              }}
+              className="w-full h-9 rounded-lg border border-line bg-surface hover:bg-surface-3 text-ink text-[12.5px] font-medium flex items-center justify-center gap-2 shadow-xs transition-colors"
+            >
+              <GoogleLogo className="size-3.5 shrink-0" />
+              <span>Connect Google Account</span>
+            </button>
+          </div>
+        )}
+      </Section>
+
       <Section title="Appearance">
         <ThemeSwitcher />
       </Section>

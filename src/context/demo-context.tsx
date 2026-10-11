@@ -1,10 +1,11 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useSyncExternalStore } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useSyncExternalStore } from "react";
 import { INITIAL_INCIDENTS, INITIAL_SOS_REQUESTS, type DemoIncident, type DemoSOS } from "@/lib/demo-data";
 import type { BasemapType } from "@/lib/map-styles";
 import { useLiveLocation, type LiveLocation, type LocationStatus } from "@/lib/use-live-location";
 import type { LiveHazardsResponse } from "@/lib/live-types";
+import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
 
 export type Role = "RESIDENT" | "RESPONDER" | "ADMIN";
 
@@ -15,6 +16,8 @@ export interface DemoUser {
   role: Role;
   organisation?: string;
   phone?: string;
+  avatarUrl?: string | null;
+  isGoogleUser?: boolean;
 }
 
 export const DEMO_USERS: Record<Role, DemoUser> = {
@@ -213,6 +216,13 @@ export interface NotificationItem {
 interface DemoContextType {
   currentRole: Role;
   currentUser: DemoUser;
+  authUser: DemoUser | null;
+  authLoading: boolean;
+  isGoogleUser: boolean;
+  profiles: DemoUser[];
+  refreshSession: () => Promise<void>;
+  logout: () => Promise<void>;
+  loginWithDemoGoogle: (email?: string, name?: string) => Promise<void>;
   setRole: (role: Role) => void;
   setCurrentUserId: (id: string) => void;
   currentLocality: Locality;
@@ -314,8 +324,117 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
   const [sosRequests, setSosRequests] = useState<any[]>(INITIAL_SOS_REQUESTS);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
-  const currentUser = DEMO_PROFILES.find((u) => u.id === currentUserId) ?? DEMO_USERS.RESIDENT;
+  const [authUser, setAuthUser] = useState<DemoUser | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+
+  const refreshSession = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/session");
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.user) {
+          const userObj: DemoUser = {
+            id: json.user.id,
+            name: json.user.name,
+            email: json.user.email,
+            role: (json.user.role as Role) || "RESIDENT",
+            avatarUrl: json.user.avatarUrl,
+            phone: json.user.phone,
+            isGoogleUser: true,
+          };
+          setAuthUser(userObj);
+          setCurrentUserId((prev) => (prev === DEMO_USERS.RESIDENT.id ? userObj.id : prev));
+        } else {
+          setAuthUser(null);
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to fetch session:", err);
+    } finally {
+      setAuthLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshSession();
+  }, [refreshSession]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    const supabase = createClient();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event) => {
+      if (event === "SIGNED_IN" || event === "USER_UPDATED") {
+        void refreshSession();
+      } else if (event === "SIGNED_OUT") {
+        setAuthUser(null);
+        setCurrentUserId(DEMO_USERS.RESIDENT.id);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [refreshSession]);
+
+  const logout = useCallback(async () => {
+    try {
+      if (isSupabaseConfigured()) {
+        const supabase = createClient();
+        await supabase.auth.signOut();
+      }
+      await fetch("/api/auth/logout", { method: "POST" });
+      setAuthUser(null);
+      setCurrentUserId(DEMO_USERS.RESIDENT.id);
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
+  }, []);
+
+  const loginWithDemoGoogle = useCallback(async (email?: string, name?: string) => {
+    const res = await fetch("/api/auth/demo-google", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, name }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || "Failed to sign in");
+    }
+    const userObj: DemoUser = {
+      id: json.user.id,
+      name: json.user.name,
+      email: json.user.email,
+      role: (json.user.role as Role) || "RESIDENT",
+      avatarUrl: json.user.avatarUrl,
+      phone: json.user.phone,
+      isGoogleUser: true,
+    };
+    setAuthUser(userObj);
+    setCurrentUserId(userObj.id);
+  }, []);
+
+  const profiles = useMemo<DemoUser[]>(() => {
+    if (!authUser) return DEMO_PROFILES;
+    return [
+      {
+        ...authUser,
+        name: `${authUser.name} (Google Account)`,
+      },
+      ...DEMO_PROFILES,
+    ];
+  }, [authUser]);
+
+  const currentUser = useMemo<DemoUser>(() => {
+    if (authUser && currentUserId === authUser.id) {
+      return authUser;
+    }
+    return profiles.find((u) => u.id === currentUserId) ?? authUser ?? DEMO_USERS.RESIDENT;
+  }, [authUser, currentUserId, profiles]);
+
   const currentRole = currentUser.role;
+  const isGoogleUser = Boolean(authUser && currentUser.id === authUser.id);
   const setRole = useCallback((role: Role) => setCurrentUserId(DEMO_USERS[role].id), []);
 
   // Fetch incidents
@@ -606,6 +725,13 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       value={{
         currentRole,
         currentUser,
+        authUser,
+        authLoading,
+        isGoogleUser,
+        profiles,
+        refreshSession,
+        logout,
+        loginWithDemoGoogle,
         setRole,
         setCurrentUserId,
         liveHazards,

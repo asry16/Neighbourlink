@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useCallback, useRef, useState } from "react";
-import { PhoneCall, Bell, ChevronDown, Check, Settings2 } from "lucide-react";
-import { useDemo, DEMO_PROFILES, type Role } from "@/context/demo-context";
+import { PhoneCall, Bell, ChevronDown, Check, Settings2, LogOut } from "lucide-react";
+import { useDemo, type Role } from "@/context/demo-context";
 import { useOverlay } from "@/context/overlay-context";
+import { GoogleLogo } from "@/components/modals/auth-modal";
 import { NAV_ITEMS } from "@/lib/navigation";
 import { DEFAULT_NOTIFY_PREFS, NOTIFY_PREFS_KEY, useLocalPref, type NotificationPrefs } from "@/lib/local-prefs";
 import { useDismiss } from "@/lib/use-dismiss";
@@ -80,6 +81,10 @@ export function TopBar({ onOpenEmergency }: { onOpenEmergency: () => void }) {
     currentRole,
     currentUser,
     setCurrentUserId,
+    authUser,
+    isGoogleUser,
+    profiles,
+    logout,
     notifications,
     markNotificationRead,
     markAllNotificationsRead,
@@ -194,6 +199,18 @@ export function TopBar({ onOpenEmergency }: { onOpenEmergency: () => void }) {
           112
         </button>
 
+        {/* Google Sign In Quick Action */}
+        {!authUser && (
+          <button
+            onClick={() => void open({ kind: "auth" })}
+            aria-label="Sign in with Google"
+            className="h-10 px-3 rounded-lg border border-line bg-surface hover:bg-surface-2 text-ink text-[13px] font-medium flex items-center gap-2 transition-colors shrink-0 shadow-xs"
+          >
+            <GoogleLogo className="size-4 shrink-0" />
+            <span className="hidden sm:inline">Sign In</span>
+          </button>
+        )}
+
         {/* Profile */}
         <Menu
           label="Profile"
@@ -205,12 +222,23 @@ export function TopBar({ onOpenEmergency }: { onOpenEmergency: () => void }) {
               aria-label={`Profile: ${currentUser.name}, ${ROLE_META[currentRole].label}`}
               className={cn("h-11 md:h-10 pl-1 pr-1 md:pr-2 rounded-full md:rounded-lg flex items-center gap-2.5 hover:bg-surface-2", isOpen && "bg-surface-2")}
             >
-              <span className="relative size-9 md:size-8 rounded-full bg-surface-3 text-ink grid place-items-center font-mono text-[11px] font-semibold">
-                {initials(currentUser.name)}
+              <span className="relative size-9 md:size-8 rounded-full bg-surface-3 text-ink grid place-items-center font-mono text-[11px] font-semibold overflow-visible">
+                {currentUser.avatarUrl ? (
+                  <img
+                    src={currentUser.avatarUrl}
+                    alt={currentUser.name}
+                    className="size-full rounded-full object-cover"
+                  />
+                ) : (
+                  initials(currentUser.name)
+                )}
                 <span className={cn("absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-surface", ROLE_META[currentRole].tone)} />
               </span>
               <span className="hidden lg:flex flex-col items-start leading-tight">
-                <span className="text-[13px] font-medium text-ink">{currentUser.name}</span>
+                <span className="text-[13px] font-medium text-ink flex items-center gap-1.5">
+                  {currentUser.name}
+                  {isGoogleUser && <GoogleLogo className="size-3 shrink-0" />}
+                </span>
                 <span className="text-[11.5px] text-ink-subtle">{ROLE_META[currentRole].label}</span>
               </span>
               <ChevronDown className="hidden lg:block size-3.5 text-ink-subtle" />
@@ -219,8 +247,40 @@ export function TopBar({ onOpenEmergency }: { onOpenEmergency: () => void }) {
         >
           {(close) => (
             <>
+              {authUser ? (
+                <div className="px-2.5 py-2 mb-1.5 rounded-lg bg-surface-2 border border-line/60">
+                  <div className="flex items-center gap-2.5">
+                    {authUser.avatarUrl ? (
+                      <img src={authUser.avatarUrl} alt={authUser.name} className="size-8 rounded-full object-cover" />
+                    ) : (
+                      <span className="size-8 rounded-full bg-accent text-accent-ink grid place-items-center text-xs font-semibold">
+                        {authUser.name[0]}
+                      </span>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[13px] font-semibold text-ink truncate">{authUser.name}</div>
+                      <div className="text-[11.5px] text-ink-subtle truncate flex items-center gap-1">
+                        <GoogleLogo className="size-3 shrink-0" />
+                        <span className="truncate">{authUser.email}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    close();
+                    void open({ kind: "auth" });
+                  }}
+                  className="w-full mb-1.5 h-10 px-2.5 rounded-lg border border-line bg-surface hover:bg-surface-2 text-ink text-[13px] font-medium flex items-center gap-2.5"
+                >
+                  <GoogleLogo className="size-4 shrink-0" />
+                  <span>Sign in with Google</span>
+                </button>
+              )}
+
               <div className="px-2.5 pt-1.5 pb-2 nl-eyebrow">View as · demo</div>
-              {DEMO_PROFILES.map((user) => {
+              {profiles.map((user) => {
                 const active = currentUser.id === user.id;
                 return (
                   <button
@@ -232,19 +292,26 @@ export function TopBar({ onOpenEmergency }: { onOpenEmergency: () => void }) {
                     aria-label={`View as ${user.name}, ${ROLE_META[user.role].label}`}
                     className={cn("w-full min-h-11 text-left px-2.5 py-2 rounded-lg flex items-center gap-3", active ? "bg-accent-soft" : "hover:bg-surface-2")}
                   >
-                    <span className="relative size-8 shrink-0 rounded-full bg-surface-3 grid place-items-center font-mono text-[11px] font-semibold text-ink">
-                      {initials(user.name)}
+                    <span className="relative size-8 shrink-0 rounded-full bg-surface-3 grid place-items-center font-mono text-[11px] font-semibold text-ink overflow-visible">
+                      {user.avatarUrl ? (
+                        <img src={user.avatarUrl} alt={user.name} className="size-full rounded-full object-cover" />
+                      ) : (
+                        initials(user.name)
+                      )}
                       <span className={cn("absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-surface", ROLE_META[user.role].tone)} />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[13px] font-medium text-ink">{user.name}</span>
+                      <span className="block text-[13px] font-medium text-ink flex items-center gap-1.5">
+                        <span className="truncate">{user.name}</span>
+                        {user.isGoogleUser && <GoogleLogo className="size-3 shrink-0" />}
+                      </span>
                       <span className="block text-[12px] text-ink-subtle truncate">{ROLE_META[user.role].label} · {ROLE_META[user.role].hint}</span>
                     </span>
                     {active && <Check className="size-4 text-accent" strokeWidth={2.5} />}
                   </button>
                 );
               })}
-              <div className="mt-1.5 pt-1.5 border-t border-line">
+              <div className="mt-1.5 pt-1.5 border-t border-line space-y-0.5">
                 {/* Panels the mobile bottom bar has no room for */}
                 {NAV_ITEMS.filter((n) => (n.id === "help" || n.id === "responder") && (!n.roles || n.roles.includes(currentRole))).map((n) => (
                   <button
@@ -263,6 +330,18 @@ export function TopBar({ onOpenEmergency }: { onOpenEmergency: () => void }) {
                   <Settings2 className="size-4" strokeWidth={1.75} />
                   Settings
                 </button>
+                {authUser && (
+                  <button
+                    onClick={() => {
+                      close();
+                      void logout();
+                    }}
+                    className="w-full h-11 px-2.5 rounded-lg flex items-center gap-3 text-[13px] text-danger hover:bg-danger-soft transition-colors"
+                  >
+                    <LogOut className="size-4" strokeWidth={1.75} />
+                    Sign Out
+                  </button>
+                )}
               </div>
             </>
           )}

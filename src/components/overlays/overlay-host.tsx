@@ -12,6 +12,7 @@ import { HazardsPanel } from "./hazards-panel";
 import { ReportsPanel } from "./reports-panel";
 import { HelpPanel } from "./help-panel";
 import { SettingsModal } from "./settings-modal";
+import { AuthModal } from "@/components/modals/auth-modal";
 import { useViewOnMap } from "./use-view-on-map";
 
 const LIST_TITLES: Record<ListKind, string> = {
@@ -89,6 +90,7 @@ export function OverlayHost() {
       {overlay?.kind === "report" && <ReportHazardModal isOpen hidden={hiddenForPick} onClose={closeAll} />}
       {overlay?.kind === "sos" && <SosModal isOpen hidden={hiddenForPick} onClose={closeAll} />}
       {overlay?.kind === "settings" && <SettingsModal open onClose={closeAll} />}
+      {overlay?.kind === "auth" && <AuthModal open onClose={closeAll} />}
       <ConfirmDialog
         open={!!confirm}
         title={confirm?.title ?? ""}

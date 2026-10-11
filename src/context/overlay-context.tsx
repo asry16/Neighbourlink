@@ -14,6 +14,7 @@ export type Overlay =
   | { kind: "report" }
   | { kind: "sos" }
   | { kind: "settings" }
+  | { kind: "auth" }
   | { kind: ListKind }
   /** Details for any map item. `from` lets "Back" return to the list. */
   | { kind: "details"; id: string; from?: ListKind };
