@@ -40,7 +40,7 @@ export function OverlayHost() {
   };
 
   let drawer: React.ReactNode = null;
-  if (overlay && overlay.kind !== "report" && overlay.kind !== "sos" && overlay.kind !== "settings") {
+  if (overlay && overlay.kind !== "report" && overlay.kind !== "sos" && overlay.kind !== "settings" && overlay.kind !== "auth") {
     let title: string;
     let body: React.ReactNode;
     let onBack: (() => void) | undefined;

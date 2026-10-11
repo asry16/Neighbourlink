@@ -66,7 +66,7 @@ export class HazardService {
     return prisma.hazardUpdate.create({
       data: {
         ...data,
-        isDemo: true,
+        isDemo: false,
       },
     });
   }

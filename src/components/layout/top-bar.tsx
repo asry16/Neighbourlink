@@ -279,7 +279,7 @@ export function TopBar({ onOpenEmergency }: { onOpenEmergency: () => void }) {
                 </button>
               )}
 
-              <div className="px-2.5 pt-1.5 pb-2 nl-eyebrow">View as · demo</div>
+              <div className="px-2.5 pt-1.5 pb-2 nl-eyebrow">Switch Active Profile</div>
               {profiles.map((user) => {
                 const active = currentUser.id === user.id;
                 return (

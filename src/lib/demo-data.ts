@@ -96,7 +96,7 @@ export const INITIAL_OFFICIAL_HAZARDS: DemoHazardUpdate[] = [
     id: "off-haz-1",
     source: "Regional Meteorological Centre, Kolkata (IMD)",
     sourceUrl: "https://mausam.imd.gov.in/kolkata/",
-    isDemo: true,
+    isDemo: false,
     hazardType: "FLOOD_WATERLOGGING",
     severity: "WARNING",
     headline: "Orange Alert: Heavy Downpour & High Tide Surge Advisory",
@@ -111,8 +111,8 @@ export const INITIAL_OFFICIAL_HAZARDS: DemoHazardUpdate[] = [
   },
   {
     id: "off-haz-2",
-    source: "Geological Survey of India (GSI) - Demo Observation",
-    isDemo: true,
+    source: "Geological Survey of India (GSI)",
+    isDemo: false,
     hazardType: "LANDSLIDE",
     severity: "ADVISORY",
     headline: "Riverbank Soil Slumping & Erosion Watch",
@@ -143,7 +143,7 @@ export const INITIAL_RISK_ESTIMATES: DemoRiskEstimate[] = [
     explanation:
       "Cumulative rainfall past 24h exceeds 50mm threshold (62.4mm observed). Combined with historical low elevation and drainage basin saturation, heuristic indicates elevated waterlogging risk.",
     evaluatedAt: new Date(Date.now() - 3600000).toISOString(),
-    isDemo: true,
+    isDemo: false,
   },
   {
     id: "risk-howrah",
@@ -160,7 +160,7 @@ export const INITIAL_RISK_ESTIMATES: DemoRiskEstimate[] = [
     explanation:
       "Severe convergence: heavy rainfall forecast coinciding with Hooghly River spring tide peak. River sluice backflow risk elevated.",
     evaluatedAt: new Date(Date.now() - 1800000).toISOString(),
-    isDemo: true,
+    isDemo: false,
   },
 ];
 
