@@ -184,6 +184,12 @@ export function MapTypePopover({
                 src={previewUrl(t, isDark, currentLocality.lat, currentLocality.lng, key)}
                 alt=""
                 loading="lazy"
+                onError={(e) => {
+                  const fallback = previewUrl(t, isDark, currentLocality.lat, currentLocality.lng, null);
+                  if (e.currentTarget.src !== fallback) {
+                    e.currentTarget.src = fallback;
+                  }
+                }}
                 className="aspect-[4/3] w-full rounded-lg object-cover bg-surface-3"
               />
               <span className={cn("block px-1 pt-1.5 pb-0.5 text-[13px] font-medium", active ? "text-accent-ink" : "text-ink")}>
