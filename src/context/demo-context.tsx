@@ -80,7 +80,7 @@ export interface Locality {
 
 export const INDIA_OVERVIEW: Locality = {
   id: "india",
-  name: "India (All States)",
+  name: "India Overview",
   description: "Live cyclone, flood and earthquake alerts nationwide",
   lng: 80.5,
   lat: 22.6,
@@ -90,25 +90,59 @@ export const INDIA_OVERVIEW: Locality = {
 
 export const WORLD_OVERVIEW: Locality = {
   id: "world",
-  name: "World",
-  description: "Major earthquakes, cyclones, floods and volcanoes worldwide",
-  lng: 40,
+  name: "World Overview",
+  description: "Major earthquakes, cyclones, floods and disasters worldwide",
+  lng: 20,
   lat: 20,
-  zoom: 1.4,
+  zoom: 1.8,
   isOverview: true,
 };
 
+export const DEFAULT_LOCALITY: Locality = {
+  id: "all-kolkata",
+  name: "Kolkata Metro (Demo Area)",
+  description: "Citywide view of active incidents, hazards & flood monitoring",
+  lng: 88.375,
+  lat: 22.56,
+  zoom: 12.2,
+};
+
 export const DEMO_LOCALITIES: Locality[] = [
-  INDIA_OVERVIEW,
+  DEFAULT_LOCALITY,
   WORLD_OVERVIEW,
   {
-    id: "all-kolkata",
-    name: "Kolkata Metro (All Sectors)",
-    description: "Citywide overview of all active incidents & hazards",
-    lng: 88.375,
-    lat: 22.56,
-    zoom: 12.2,
+    id: "london",
+    name: "London",
+    description: "United Kingdom · Live weather, air quality and flood alerts",
+    lng: -0.1276,
+    lat: 51.5072,
+    zoom: 12.0,
   },
+  {
+    id: "new-york",
+    name: "New York City",
+    description: "United States · Live weather, air quality and coastal monitoring",
+    lng: -74.006,
+    lat: 40.7128,
+    zoom: 12.0,
+  },
+  {
+    id: "tokyo",
+    name: "Tokyo",
+    description: "Japan · Live weather, seismic tracking and disaster feeds",
+    lng: 139.6917,
+    lat: 35.6895,
+    zoom: 12.0,
+  },
+  {
+    id: "paris",
+    name: "Paris",
+    description: "France · Live weather, air quality and river monitoring",
+    lng: 2.3522,
+    lat: 48.8566,
+    zoom: 12.0,
+  },
+  INDIA_OVERVIEW,
   {
     id: "central-kolkata",
     name: "Central Kolkata (Park St)",
@@ -158,8 +192,8 @@ const userStore = createSessionStore<string>(
   (v): v is string => typeof v === "string" && v.length > 0
 );
 const localityStore = createSessionStore<Locality>(
-  "neighbourlink_locality",
-  INDIA_OVERVIEW,
+  "neighbourlink_locality_v2",
+  DEFAULT_LOCALITY,
   (v): v is Locality => {
     const l = v as Locality | null;
     return (
