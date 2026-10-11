@@ -6,7 +6,7 @@ import { useDemo } from "@/context/demo-context";
 import { useOverlay } from "@/context/overlay-context";
 import { Badge, humanize } from "@/components/ui/primitives";
 import { RISK_TONE, timeAgo } from "@/lib/status";
-import { NAQI_ADVICE, NAQI_TONE } from "@/lib/air-quality";
+import { aqiPresentation, AQI_SCALE_LABEL } from "@/lib/air-quality";
 import { weatherLabel, type CurrentWeather } from "@/lib/weather";
 import type { LiveHazard, LocalConditions } from "@/lib/live-types";
 import { cn } from "@/lib/utils";
@@ -51,7 +51,7 @@ export function LocalConditionsCard() {
       <section className="p-4 border-b border-line">
         <h3 className="nl-eyebrow mb-1">Conditions here</h3>
         <p className="text-[13px] text-ink-muted">
-          Search any city or town in India to see its live weather, air quality (India AQI) and flood risk.
+          Search any city or town to see its live weather, air quality and flood risk. India uses the CPCB air-quality index.
         </p>
       </section>
     );
@@ -89,17 +89,18 @@ export function LocalConditionsCard() {
 
           {aq ? (
             <div className="rounded-xl border border-line p-3 flex gap-3">
-              <div className={cn("shrink-0 w-16 rounded-lg grid place-items-center py-2", NAQI_TONE[aq.category])}>
+              <div className={cn("shrink-0 w-16 rounded-lg grid place-items-center py-2", aqiPresentation(aq.scale, aq.category).tone)}>
                 <span className="text-[22px] font-semibold leading-none">{aq.aqi}</span>
                 <span className="text-[10px] font-medium uppercase tracking-wide opacity-90 mt-1">AQI</span>
               </div>
               <div className="min-w-0 text-[12.5px]">
                 <div className="text-[14px] font-semibold text-ink">{aq.category}</div>
-                <div className="text-ink-muted leading-snug">{NAQI_ADVICE[aq.category]}</div>
+                <div className="text-ink-muted leading-snug">{aqiPresentation(aq.scale, aq.category).advice}</div>
                 <div className="mt-1 text-[11.5px] text-ink-subtle">
-                  24 h avg PM2.5 {aq.pm25Avg24h} · PM10 {aq.pm10Avg24h} µg/m³ · driven by {aq.dominant}
+                  24 h avg PM2.5 {aq.pm25Avg24h} · PM10 {aq.pm10Avg24h} µg/m³
+                  {aq.dominant && ` · driven by ${aq.dominant}`}
                 </div>
-                <div className="text-[11px] text-ink-subtle">India NAQI (CPCB method) from CAMS model data</div>
+                <div className="text-[11px] text-ink-subtle">{AQI_SCALE_LABEL[aq.scale]} from CAMS model data</div>
               </div>
             </div>
           ) : (
@@ -145,6 +146,7 @@ export function LiveIndiaAlerts() {
   const { setSheetCollapsed } = useOverlay();
   const [now] = useState(() => Date.now());
   const [showAll, setShowAll] = useState(false);
+  const [scope, setScope] = useState<"india" | "world">("india");
 
   const viewOnMap = (h: LiveHazard) => {
     if (!layerFilters.liveFeeds) toggleLayer("liveFeeds");
@@ -153,7 +155,8 @@ export function LiveIndiaAlerts() {
     setSheetCollapsed(true);
   };
 
-  const hazards = liveHazards?.hazards ?? [];
+  const all = liveHazards?.hazards ?? [];
+  const hazards = scope === "india" ? all.filter((h) => h.region !== "WORLD") : all.filter((h) => h.region === "WORLD");
   const shown = showAll ? hazards : hazards.slice(0, 6);
   const activeCount = hazards.filter((h) => h.isCurrent).length;
 
@@ -162,10 +165,12 @@ export function LiveIndiaAlerts() {
       <div className="flex items-start justify-between gap-2">
         <div>
           <h3 id="hz-live" className="nl-eyebrow mb-1 flex items-center gap-1.5">
-            <span className="nl-live-dot text-danger" /> Live across India
+            <span className="nl-live-dot text-danger" /> Live disaster feeds
           </h3>
           <p className="text-[12px] text-ink-subtle mb-3">
-            Real-time USGS earthquakes (7 days) and GDACS cyclone, flood and drought alerts (30 days).
+            {scope === "india"
+              ? "India and neighbours: USGS earthquakes M2.5+ (7 days), GDACS cyclone, flood and drought alerts (30 days)."
+              : "Worldwide: USGS earthquakes M5+ (7 days), GDACS Orange and Red alerts (30 days)."}
             {liveHazards && ` Updated ${timeAgo(liveHazards.fetchedAt, now)}.`}
           </p>
         </div>
@@ -174,9 +179,33 @@ export function LiveIndiaAlerts() {
         </button>
       </div>
 
+      <div role="tablist" aria-label="Region" className="mb-3 grid grid-cols-2 gap-0.5 p-0.5 rounded-lg bg-surface-2 border border-line">
+        {(["india", "world"] as const).map((k) => (
+          <button
+            key={k}
+            role="tab"
+            aria-selected={scope === k}
+            onClick={() => {
+              setScope(k);
+              setShowAll(false);
+            }}
+            className={cn(
+              "h-9 md:h-8 rounded-md text-[12.5px] font-medium",
+              scope === k ? "bg-surface text-ink shadow-[0_0_0_1px_var(--color-line)]" : "text-ink-subtle hover:text-ink"
+            )}
+          >
+            {k === "india" ? "India" : "World"} ({all.filter((h) => (k === "india") === (h.region !== "WORLD")).length})
+          </button>
+        ))}
+      </div>
+
       {liveHazards?.sources.some((s) => !s.ok) && (
         <p className="mb-2 text-[12px] text-warn">
-          {liveHazards.sources.filter((s) => !s.ok).map((s) => s.name).join(" and ")} feed unavailable right now.
+          {liveHazards.sources
+            .filter((s) => !s.ok)
+            .map((s) => s.name)
+            .join(" and ")}{" "}
+          feed unavailable right now.
         </p>
       )}
 
@@ -204,6 +233,7 @@ export function LiveIndiaAlerts() {
                   <Badge tone={h.isCurrent ? "danger" : "neutral"} dot={h.isCurrent}>
                     {h.isCurrent ? "Active" : "Past"}
                   </Badge>
+                  {h.region === "NEAR_INDIA" && <Badge tone="neutral" dot={false}>Near India</Badge>}
                   <span className="ml-auto text-[11px] font-mono text-ink-subtle">{h.source}</span>
                 </div>
                 <div className="mt-1.5 text-[14px] font-semibold text-ink leading-snug">{h.title}</div>

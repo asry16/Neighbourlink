@@ -6,6 +6,7 @@ import type { BasemapType } from "@/lib/map-styles";
 import { useLiveLocation, type LiveLocation, type LocationStatus } from "@/lib/use-live-location";
 import type { LiveHazardsResponse } from "@/lib/live-types";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
+import { createSessionStore } from "@/lib/session-store";
 
 export type Role = "RESIDENT" | "RESPONDER" | "ADMIN";
 
@@ -87,8 +88,19 @@ export const INDIA_OVERVIEW: Locality = {
   isOverview: true,
 };
 
+export const WORLD_OVERVIEW: Locality = {
+  id: "world",
+  name: "World",
+  description: "Major earthquakes, cyclones, floods and volcanoes worldwide",
+  lng: 40,
+  lat: 20,
+  zoom: 1.4,
+  isOverview: true,
+};
+
 export const DEMO_LOCALITIES: Locality[] = [
   INDIA_OVERVIEW,
+  WORLD_OVERVIEW,
   {
     id: "all-kolkata",
     name: "Kolkata Metro (All Sectors)",
@@ -138,6 +150,28 @@ export const DEMO_LOCALITIES: Locality[] = [
     zoom: 13.5,
   },
 ];
+
+// The demo's "signed-in" user and area survive a page reload (per tab).
+const userStore = createSessionStore<string>(
+  "neighbourlink_demo_user",
+  DEMO_USERS.RESIDENT.id,
+  (v): v is string => typeof v === "string" && v.length > 0
+);
+const localityStore = createSessionStore<Locality>(
+  "neighbourlink_locality",
+  INDIA_OVERVIEW,
+  (v): v is Locality => {
+    const l = v as Locality | null;
+    return (
+      !!l &&
+      typeof l.id === "string" &&
+      typeof l.name === "string" &&
+      Number.isFinite(l.lat) &&
+      Number.isFinite(l.lng) &&
+      Number.isFinite(l.zoom)
+    );
+  }
+);
 
 export interface MapFocusRequest {
   lat: number;
@@ -290,8 +324,10 @@ function toDemoSOS(item: any): DemoSOS {
 const DemoContext = createContext<DemoContextType | undefined>(undefined);
 
 export function DemoProvider({ children }: { children: React.ReactNode }) {
-  const [currentUserId, setCurrentUserId] = useState<string>(DEMO_USERS.RESIDENT.id);
-  const [currentLocality, setLocality] = useState<Locality>(INDIA_OVERVIEW);
+  const currentUserId = userStore.use();
+  const setCurrentUserId = userStore.set;
+  const currentLocality = localityStore.use();
+  const setLocality = localityStore.set;
   const [manualLocation, setManualLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [mapFocus, setMapFocus] = useState<MapFocusRequest | null>(null);
 

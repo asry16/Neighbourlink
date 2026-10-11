@@ -1,7 +1,9 @@
-import type { NaqiCategory } from "./air-quality";
+import type { AqiScale } from "./air-quality";
 
 export type LiveHazardType = "EARTHQUAKE" | "CYCLONE" | "FLOOD" | "DROUGHT" | "WILDFIRE" | "VOLCANO" | "OTHER";
 export type AlertLevel = "GREEN" | "ORANGE" | "RED";
+/** India, its immediate neighbourhood, or elsewhere. */
+export type HazardRegion = "INDIA" | "NEAR_INDIA" | "WORLD";
 
 /** A real event from a public disaster feed. */
 export interface LiveHazard {
@@ -18,6 +20,7 @@ export interface LiveHazard {
   endedAt: string | null;
   /** Still ongoing (GDACS) or within the last 24 h (earthquakes). */
   isCurrent: boolean;
+  region: HazardRegion;
   url: string;
 }
 
@@ -35,9 +38,11 @@ export interface LiveHazardsResponse {
 }
 
 export interface AirQualityReading {
+  /** India's NAQI inside India, the US EPA AQI elsewhere. */
+  scale: AqiScale;
   aqi: number;
-  category: NaqiCategory;
-  dominant: "PM2.5" | "PM10";
+  category: string;
+  dominant: "PM2.5" | "PM10" | null;
   pm25: number;
   pm10: number;
   /** 24-hour means used for the CPCB index. */

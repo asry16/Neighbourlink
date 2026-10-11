@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { HazardService } from "@/services/hazard-service";
+import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   try {
@@ -17,6 +18,18 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+    // Official warnings outrank everything in the app, so only admins may add them.
+    const author =
+      typeof body.userId === "string"
+        ? await prisma.user.findUnique({ where: { id: body.userId }, select: { role: true } })
+        : null;
+    if (author?.role !== "ADMIN") {
+      return NextResponse.json(
+        { success: false, error: "Only administrators can publish official hazard updates" },
+        { status: 403 }
+      );
+    }
+    delete body.userId;
     const hazard = await HazardService.createOfficialHazard({
       ...body,
       issuedAt: body.issuedAt ? new Date(body.issuedAt) : new Date(),
