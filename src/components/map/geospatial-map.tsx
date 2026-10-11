@@ -307,6 +307,8 @@ export function GeospatialMap() {
         zoom: currentLocality.zoom,
         pitch: is3D ? PITCH_3D : 0,
         maxPitch: 70,
+        // Basemap tiles stop at z16–18; past ~20 enlarged tiles are just blur.
+        maxZoom: 20,
         attributionControl: false,
       });
 

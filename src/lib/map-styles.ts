@@ -45,7 +45,10 @@ export const LIGHT_MAP_STYLE: StyleSpecification = {
         "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
       ],
       tileSize: 256,
-      maxzoom: 19,
+      // Esri answers deeper zooms with a grey "Map data not yet available"
+      // image (HTTP 200) where it has no detail, e.g. z18+ over Kolkata.
+      // Capping the source makes MapLibre enlarge real z17 tiles instead.
+      maxzoom: 17,
       attribution:
         "Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom",
     },
@@ -70,6 +73,9 @@ export const SATELLITE_FALLBACK_STYLE: StyleSpecification = {
         "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       ],
       tileSize: 256,
+      // Imagery depth varies by region; 18 is safe across India. Set on the
+      // source (not the layer, which would hide imagery past that zoom).
+      maxzoom: 18,
       attribution: "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
     },
   },
@@ -78,8 +84,6 @@ export const SATELLITE_FALLBACK_STYLE: StyleSpecification = {
       id: "esri-satellite-layer",
       type: "raster",
       source: "esri-satellite",
-      minzoom: 0,
-      maxzoom: 19,
     },
   ],
 };
