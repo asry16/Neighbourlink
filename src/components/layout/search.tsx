@@ -36,14 +36,14 @@ export function Search() {
   const [places, setPlaces] = useState<PlaceResult[]>([]);
   const placeRequest = useRef(0);
 
-  // Any city / town in the world, India first (debounced; latest response wins).
+  // Any city / town in the world (debounced; latest response wins).
   useEffect(() => {
     const q = query.trim();
     const id = ++placeRequest.current;
     if (q.length < 2) return;
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/geocode?prefer=IN&q=${encodeURIComponent(q)}`);
+        const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
         const json = await res.json();
         if (id === placeRequest.current && json.success) setPlaces(json.data);
       } catch {
@@ -190,14 +190,14 @@ export function Search() {
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          placeholder={currentLocality.name}
-          aria-label={`Search any city or town, reports and help centres. Current area: ${currentLocality.name}`}
+          placeholder="Search any city, neighborhood, or report…"
+          aria-label={`Search any city or place worldwide, reports and help centres. Current area: ${currentLocality.name}`}
           role="combobox"
           aria-expanded={showPanel}
           aria-controls={listId}
           aria-autocomplete="list"
           aria-activedescendant={showPanel && results[active] ? `${listId}-${active}` : undefined}
-          className="flex-1 min-w-0 h-full bg-transparent text-[16px] md:text-[14px] text-ink placeholder:text-ink placeholder:font-medium outline-none [&::-webkit-search-cancel-button]:hidden"
+          className="flex-1 min-w-0 h-full bg-transparent text-[16px] md:text-[14px] text-ink placeholder:text-ink-subtle placeholder:font-normal outline-none [&::-webkit-search-cancel-button]:hidden"
         />
         {query && (
           <button onClick={() => setQuery("")} aria-label="Clear search" className="size-9 md:size-7 grid place-items-center rounded text-ink-subtle hover:text-ink">
@@ -210,7 +210,12 @@ export function Search() {
         <div
           className="fixed md:absolute left-2 right-2 md:left-0 md:right-auto top-[calc(3.75rem+env(safe-area-inset-top))] md:top-full md:mt-2 md:w-[24rem] z-[55] rounded-xl border border-line bg-surface p-1.5 shadow-[var(--shadow-float)] animate-rise max-h-[70dvh] overflow-y-auto"
         >
-          {query.trim().length === 0 && <div className="nl-eyebrow px-2.5 pt-1.5 pb-1">Choose an area</div>}
+          {query.trim().length === 0 && (
+            <div className="flex items-center justify-between px-2.5 pt-1.5 pb-1">
+              <span className="nl-eyebrow">Choose an area</span>
+              <span className="text-[11.5px] text-ink-subtle">or search worldwide</span>
+            </div>
+          )}
           <ul id={listId} role="listbox" aria-label="Search results">
             {results.length === 0 ? (
               <li className="px-3 py-6 text-center text-[13px] text-ink-subtle">No matching places, reports or help centres.</li>

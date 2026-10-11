@@ -51,7 +51,7 @@ export function LocalConditionsCard() {
       <section className="p-4 border-b border-line">
         <h3 className="nl-eyebrow mb-1">Conditions here</h3>
         <p className="text-[13px] text-ink-muted">
-          Search any city or town to see its live weather, air quality and flood risk. India uses the CPCB air-quality index.
+          Search any city or town worldwide to see its live weather, air quality and flood risk.
         </p>
       </section>
     );
@@ -146,7 +146,7 @@ export function LiveIndiaAlerts() {
   const { setSheetCollapsed } = useOverlay();
   const [now] = useState(() => Date.now());
   const [showAll, setShowAll] = useState(false);
-  const [scope, setScope] = useState<"india" | "world">("india");
+  const [scope, setScope] = useState<"world" | "india">("world");
 
   const viewOnMap = (h: LiveHazard) => {
     if (!layerFilters.liveFeeds) toggleLayer("liveFeeds");
@@ -168,9 +168,9 @@ export function LiveIndiaAlerts() {
             <span className="nl-live-dot text-danger" /> Live disaster feeds
           </h3>
           <p className="text-[12px] text-ink-subtle mb-3">
-            {scope === "india"
-              ? "India and neighbours: USGS earthquakes M2.5+ (7 days), GDACS cyclone, flood and drought alerts (30 days)."
-              : "Worldwide: USGS earthquakes M5+ (7 days), GDACS Orange and Red alerts (30 days)."}
+            {scope === "world"
+              ? "Worldwide: USGS earthquakes M5+ (7 days), GDACS Orange and Red alerts (30 days)."
+              : "India and neighbours: USGS earthquakes M2.5+ (7 days), GDACS cyclone, flood and drought alerts (30 days)."}
             {liveHazards && ` Updated ${timeAgo(liveHazards.fetchedAt, now)}.`}
           </p>
         </div>
@@ -180,7 +180,7 @@ export function LiveIndiaAlerts() {
       </div>
 
       <div role="tablist" aria-label="Region" className="mb-3 grid grid-cols-2 gap-0.5 p-0.5 rounded-lg bg-surface-2 border border-line">
-        {(["india", "world"] as const).map((k) => (
+        {(["world", "india"] as const).map((k) => (
           <button
             key={k}
             role="tab"
@@ -194,7 +194,7 @@ export function LiveIndiaAlerts() {
               scope === k ? "bg-surface text-ink shadow-[0_0_0_1px_var(--color-line)]" : "text-ink-subtle hover:text-ink"
             )}
           >
-            {k === "india" ? "India" : "World"} ({all.filter((h) => (k === "india") === (h.region !== "WORLD")).length})
+            {k === "world" ? "Worldwide" : "India & Region"} ({all.filter((h) => (k === "world") === (h.region === "WORLD")).length})
           </button>
         ))}
       </div>

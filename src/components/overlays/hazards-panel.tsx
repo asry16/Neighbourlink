@@ -27,7 +27,7 @@ export function HazardsPanel() {
 
       {/* Official */}
       <section aria-labelledby="hz-official" className="p-4 border-b border-line">
-        <h3 id="hz-official" className="nl-eyebrow mb-1">Official warnings · Kolkata</h3>
+        <h3 id="hz-official" className="nl-eyebrow mb-1">Official warnings · Kolkata Demo</h3>
         <p className="text-[12px] text-ink-subtle mb-3">
           Issued by government agencies. These take precedence over everything else here.
         </p>

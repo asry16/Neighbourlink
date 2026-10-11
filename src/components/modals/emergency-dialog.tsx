@@ -4,10 +4,10 @@ import React, { useEffect } from "react";
 import { PhoneCall, X } from "lucide-react";
 
 const HELPLINES = [
-  { label: "National emergency", number: "112", primary: true },
-  { label: "Disaster management cell (WB)", number: "1070" },
-  { label: "WB control room", number: "033-2214-3526" },
-  { label: "Ambulance", number: "102 / 108" },
+  { label: "Emergency (Universal / EU / India)", number: "112", primary: true },
+  { label: "United States / Canada emergency", number: "911" },
+  { label: "United Kingdom emergency", number: "999" },
+  { label: "Regional disaster cell", number: "1070" },
 ];
 
 export function EmergencyDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -50,7 +50,7 @@ export function EmergencyDialog({ open, onClose }: { open: boolean; onClose: () 
           </h2>
           <p className="mt-2 text-[13.5px] leading-relaxed text-ink-muted">
             Neighbourlink is a community awareness tool and is not a substitute for official
-            dispatch. If anyone is at risk right now, call 112.
+            dispatch. If anyone is in immediate danger, call your local emergency service (112, 911, or 999).
           </p>
 
           <dl className="mt-5 rounded-xl border border-line divide-y divide-line">
