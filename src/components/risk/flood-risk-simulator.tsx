@@ -91,9 +91,11 @@ export function FloodRiskSimulator() {
     setIsLoading(true);
 
     try {
+      // eslint-disable-next-line react-hooks/purity
+      const currentTime = Date.now();
       const inputs = {
         ...SCENARIOS[key].inputs,
-        ...(key === "STALE_DATA" ? { evaluatedAt: new Date(Date.now() - 36 * 3600 * 1000).toISOString() } : {}),
+        ...(key === "STALE_DATA" ? { evaluatedAt: new Date(currentTime - 36 * 3600 * 1000).toISOString() } : {}),
       };
       const res = await fetch("/api/risk/evaluate", {
         method: "POST",
