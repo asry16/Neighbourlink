@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { IncidentService } from "@/services/incident-service";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const isDebug = url.searchParams.get("debug") === "1" || url.searchParams.get("debug") === "true";
   try {
     const incidents = await IncidentService.getIncidents();
     return NextResponse.json({ success: true, data: incidents });
@@ -9,7 +11,11 @@ export async function GET() {
     console.error("GET /api/incidents failed:", error);
     const message = process.env.NODE_ENV === "production" ? "Failed to fetch incidents" : (error.message || "Failed to fetch incidents");
     return NextResponse.json(
-      { success: false, error: message },
+      {
+        success: false,
+        error: message,
+        ...(isDebug ? { details: error?.message || String(error) } : {}),
+      },
       { status: 500 }
     );
   }
