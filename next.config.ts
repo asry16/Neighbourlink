@@ -9,6 +9,8 @@ const nextConfig: NextConfig = {
   // Hide the development-only route indicator. Compile/runtime errors are
   // still surfaced by Next.js.
   devIndicators: false,
+  // Cedar's Node build loads its .wasm from disk next to the module.
+  serverExternalPackages: ["@cedar-policy/cedar-wasm"],
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {

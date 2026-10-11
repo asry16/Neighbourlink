@@ -1,5 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { nextTrackingCode } from "@/lib/tracking-code";
+import { authorize, type Role } from "@/authz/cedar";
+
+/** User-facing messages for the Cedar forbid policies on corroboration. */
+const CORROBORATION_DENIED: Record<string, string> = {
+  "no-self-corroboration": "You cannot corroborate your own report. Another resident must independently observe it.",
+  "no-corroborating-resolved": "This report has already been resolved.",
+};
 
 export interface CreateIncidentInput {
   category: string;
@@ -163,12 +170,18 @@ export class IncidentService {
       throw new Error("Incident not found");
     }
 
-    if (incident.reporterId === userId) {
-      throw new Error("You cannot corroborate your own report. Another resident must independently observe it.");
-    }
-
-    if (incident.status === "RESOLVED") {
-      throw new Error("This report has already been resolved.");
+    // Independence rules live in Cedar (src/authz/policies.ts).
+    const viewer = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    const decision = authorize({ id: userId, role: (viewer?.role ?? "GUEST") as Role }, "CorroborateIncident", {
+      type: "Incident",
+      id: incident.id,
+      reporterId: incident.reporterId,
+      status: incident.status,
+    });
+    if (!decision.allowed) {
+      throw new Error(
+        decision.reasons.map((r) => CORROBORATION_DENIED[r]).find(Boolean) ?? "You can't corroborate this report."
+      );
     }
 
     // Check if this user has already corroborated this incident

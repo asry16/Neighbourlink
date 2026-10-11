@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { HazardService } from "@/services/hazard-service";
 import { prisma } from "@/lib/prisma";
+import { authorize, type Role } from "@/authz/cedar";
 
 export async function GET() {
   try {
@@ -18,12 +19,17 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    // Official warnings outrank everything in the app, so only admins may add them.
+    // Official warnings outrank everything in the app; Cedar allows admins only.
     const author =
       typeof body.userId === "string"
         ? await prisma.user.findUnique({ where: { id: body.userId }, select: { role: true } })
         : null;
-    if (author?.role !== "ADMIN") {
+    const decision = authorize(
+      { id: typeof body.userId === "string" ? body.userId : "anonymous", role: (author?.role ?? "GUEST") as Role },
+      "PublishOfficialHazard",
+      { type: "Platform" }
+    );
+    if (!decision.allowed) {
       return NextResponse.json(
         { success: false, error: "Only administrators can publish official hazard updates" },
         { status: 403 }

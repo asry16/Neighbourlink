@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { nextTrackingCode } from "@/lib/tracking-code";
+import { authorize, type AuthzAction, type Role } from "@/authz/cedar";
 
 export interface CreateSOSInput {
   requesterId: string;
@@ -174,9 +175,15 @@ export class SOSService {
     return user?.role ?? "PUBLIC";
   }
 
-  private static async assertResponder(userId: string) {
-    const role = await this.getViewerRole(userId);
-    if (role !== "RESPONDER" && role !== "ADMIN") {
+  /** Ask the Cedar policies (src/authz/policies.ts); throw if denied. */
+  private static async assertAllowed(
+    userId: string,
+    action: AuthzAction,
+    sos: { id: string; requesterId: string }
+  ) {
+    const role = (await this.getViewerRole(userId)) as Role;
+    const decision = authorize({ id: userId, role }, action, { type: "SOSRequest", ...sos });
+    if (!decision.allowed) {
       throw new SOSAuthorizationError("Only registered responders can perform this action");
     }
   }
@@ -191,7 +198,7 @@ export class SOSService {
    * Fetch SOS requests with strict server-side redaction for civilian security
    */
   static async getSOSRequests(role: string, currentUserId?: string) {
-    const isAuthorized = role === "RESPONDER" || role === "ADMIN";
+    const viewer = { id: currentUserId ?? "anonymous", role: role as Role };
 
     const requests = await prisma.sOSRequest.findMany({
       include: {
@@ -206,9 +213,14 @@ export class SOSService {
     });
 
     return requests.map((sos) => {
-      const isOwner = currentUserId && sos.requesterId === currentUserId;
+      // Cedar decides who sees exact coordinates and the callback number.
+      const exact = authorize(viewer, "ViewExactLocation", {
+        type: "SOSRequest",
+        id: sos.id,
+        requesterId: sos.requesterId,
+      }).allowed;
 
-      if (isAuthorized || isOwner) {
+      if (exact) {
         // Full unredacted data for responders or the requester themselves
         return {
           id: sos.id,
@@ -270,7 +282,8 @@ export class SOSService {
     responderUserId: string,
     message: string = "Rescue unit has acknowledged and is preparing deployment."
   ) {
-    await this.assertResponder(responderUserId);
+    // Responder rights don't depend on the request, so check before loading it.
+    await this.assertAllowed(responderUserId, "AcknowledgeSOS", { id: sosId, requesterId: "" });
 
     const sos = await prisma.sOSRequest.findUnique({
       where: { id: sosId },
@@ -329,7 +342,7 @@ export class SOSService {
     authorUserId: string,
     message: string
   ) {
-    await this.assertResponder(authorUserId);
+    await this.assertAllowed(authorUserId, "PostSOSUpdate", { id: sosId, requesterId: "" });
 
     const sos = await prisma.sOSRequest.findUnique({ where: { id: sosId } });
     if (!sos) throw new Error("SOS Request not found");
@@ -370,9 +383,7 @@ export class SOSService {
     if (!sos) throw new Error("SOS Request not found");
 
     // Responders close cases; the requester may also confirm they are safe.
-    if (sos.requesterId !== authorUserId) {
-      await this.assertResponder(authorUserId);
-    }
+    await this.assertAllowed(authorUserId, "ResolveSOS", { id: sos.id, requesterId: sos.requesterId });
 
     const updated = await prisma.sOSRequest.update({
       where: { id: sosId },
