@@ -6,9 +6,15 @@ export interface RiskEvaluationInput {
   rainfallRecentMm?: number | null;
   rainfallForecastMm?: number | null;
   waterLevelMeters?: number | null;
+  /** Modelled river discharge divided by its seasonal median (GloFAS). */
+  riverDischargeRatio?: number | null;
   historicalSusceptibility?: boolean;
   evaluatedAt?: Date;
 }
+
+/** IMD 24-hour rainfall categories (mm). */
+export const IMD_HEAVY_RAIN_MM = 64.5;
+export const IMD_VERY_HEAVY_RAIN_MM = 115.6;
 
 export interface RiskEvaluationOutput {
   riskLevel: RiskLevel;
@@ -37,6 +43,7 @@ export class DeterministicFloodRiskEngine implements IFloodRiskEstimator {
       rainfallRecentMm,
       rainfallForecastMm,
       waterLevelMeters,
+      riverDischargeRatio,
       historicalSusceptibility = false,
       evaluatedAt = new Date(),
     } = input;
@@ -84,12 +91,22 @@ export class DeterministicFloodRiskEngine implements IFloodRiskEstimator {
     if (historicalSusceptibility) {
       contributingFactors.push("Historical Basin Susceptibility: Low-lying drainage catchment");
     }
+    if (riverDischargeRatio != null) {
+      contributingFactors.push(`River discharge: ${riverDischargeRatio.toFixed(1)}× seasonal median`);
+    }
+    if (rainfallForecastMm >= IMD_VERY_HEAVY_RAIN_MM) {
+      contributingFactors.push("IMD scale: very heavy rainfall forecast");
+    } else if (rainfallForecastMm >= IMD_HEAVY_RAIN_MM) {
+      contributingFactors.push("IMD scale: heavy rainfall forecast");
+    }
 
     // RULE 2: High Risk Convergence
     // Recent rain >= 50mm AND forecast >= 25mm, OR water level gauge >= 2.0m
     if (
       (rainfallRecentMm >= 50 && rainfallForecastMm >= 25) ||
-      (waterLevelMeters != null && waterLevelMeters >= 2.0)
+      rainfallForecastMm >= IMD_VERY_HEAVY_RAIN_MM ||
+      (waterLevelMeters != null && waterLevelMeters >= 2.0) ||
+      (riverDischargeRatio != null && riverDischargeRatio >= 2.5)
     ) {
       return {
         riskLevel: "HIGH",
@@ -109,7 +126,9 @@ export class DeterministicFloodRiskEngine implements IFloodRiskEstimator {
     if (
       rainfallRecentMm >= 30 ||
       (rainfallForecastMm >= 30 && historicalSusceptibility) ||
-      (waterLevelMeters != null && waterLevelMeters >= 1.4)
+      rainfallForecastMm >= IMD_HEAVY_RAIN_MM ||
+      (waterLevelMeters != null && waterLevelMeters >= 1.4) ||
+      (riverDischargeRatio != null && riverDischargeRatio >= 1.5)
     ) {
       return {
         riskLevel: "ELEVATED",

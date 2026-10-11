@@ -98,6 +98,10 @@ export function ReportHazardModal({ isOpen, onClose, hidden }: ReportHazardModal
     e.preventDefault();
     setErrorMessage(null);
 
+    if (!location && fallbackPosition.tooBroad) {
+      setErrorMessage("Set where you saw this: use your location or choose on the map.");
+      return;
+    }
     const when = new Date(observedAt);
     if (Number.isNaN(when.getTime()) || when.getTime() > Date.now() + 60_000) {
       setErrorMessage("The time observed can't be in the future.");

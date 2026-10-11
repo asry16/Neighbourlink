@@ -20,6 +20,12 @@ const ICONS = {
   home: '<path d="M3 10.5 12 3l9 7.5V21H3z"/><path d="M12 11v6"/><path d="M9 14h6"/>',
   waves:
     '<path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/>',
+  activity:
+    '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>',
+  tornado: '<path d="M21 4H3"/><path d="M18 8H6"/><path d="M19 12H9"/><path d="M16 16h-6"/><path d="M11 20H9"/>',
+  flame:
+    '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
 } as const;
 
 export type MarkerIcon = keyof typeof ICONS;
@@ -160,4 +166,40 @@ export function pickPinHTML() {
         <circle cx="17" cy="17" r="5.5" fill="white"/>
       </svg>
     </div>`;
+}
+
+const LIVE_ICON: Record<string, MarkerIcon> = {
+  EARTHQUAKE: "activity",
+  CYCLONE: "tornado",
+  FLOOD: "waves",
+  DROUGHT: "sun",
+  WILDFIRE: "flame",
+  VOLCANO: "flame",
+  OTHER: "alert",
+};
+
+const LIVE_BG: Record<string, string> = {
+  RED: "bg-red-600",
+  ORANGE: "bg-orange-500",
+  GREEN: "bg-emerald-600",
+};
+
+/** Real event from a public feed: alert-level colour, pulse while ongoing. */
+export function liveHazardHTML(h: { type: string; alertLevel: string | null; magnitude?: number; isCurrent: boolean }) {
+  const bg = (h.alertLevel && LIVE_BG[h.alertLevel]) || "bg-fuchsia-600";
+  // Earthquake pins grow with magnitude (M2.5 → 28px, M6+ → 44px).
+  const size = h.magnitude != null ? Math.round(Math.min(44, Math.max(28, 28 + (h.magnitude - 2.5) * 4.6))) : 34;
+  return `
+    <div class="relative grid place-items-center transition-transform duration-150 hover:scale-110" style="width:${size}px;height:${size}px">
+      ${h.isCurrent ? `<span class="absolute inset-0 rounded-full ${bg} opacity-40 animate-ping [animation-duration:2s]"></span>` : ""}
+      <div class="relative size-full rounded-full ${bg} ${h.isCurrent ? "" : "opacity-75"} text-white grid place-items-center ring-[2.5px] ring-white shadow-[0_4px_12px_-2px_rgb(0_0_0/0.4)]">
+        ${h.magnitude != null ? `<span class="font-mono text-[11px] font-bold">${esc(h.magnitude.toFixed(1))}</span>` : svg(LIVE_ICON[h.type] ?? "alert", 16)}
+      </div>
+    </div>`;
+}
+
+/** External source link for popups; only http(s) URLs are allowed through. */
+export function sourceLinkHTML(url: string, label: string) {
+  if (!/^https?:\/\//i.test(url)) return "";
+  return `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" class="mt-3 w-full h-10 rounded-lg border border-line text-ink text-[13px] font-medium grid place-items-center hover:bg-surface-2">${esc(label)} ↗</a>`;
 }

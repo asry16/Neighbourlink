@@ -8,6 +8,7 @@ import { FloodRiskSimulator } from "@/components/risk/flood-risk-simulator";
 import { HAZARD_TONE, RISK_TONE, formatDateTime, isStale, timeAgo } from "@/lib/status";
 import { useOverlay } from "@/context/overlay-context";
 import { useViewOnMap } from "./use-view-on-map";
+import { LiveIndiaAlerts, LocalConditionsCard } from "./live-sections";
 
 const rowBtn =
   "h-11 md:h-8 px-2.5 rounded-lg text-[12.5px] font-medium text-ink-muted hover:bg-surface-2 hover:text-ink inline-flex items-center gap-1.5";
@@ -21,9 +22,12 @@ export function HazardsPanel() {
 
   return (
     <div className="flex flex-col">
+      <LocalConditionsCard />
+      <LiveIndiaAlerts />
+
       {/* Official */}
       <section aria-labelledby="hz-official" className="p-4 border-b border-line">
-        <h3 id="hz-official" className="nl-eyebrow mb-1">Official warnings</h3>
+        <h3 id="hz-official" className="nl-eyebrow mb-1">Official warnings · Kolkata demo</h3>
         <p className="text-[12px] text-ink-subtle mb-3">
           Issued by government agencies. These take precedence over everything else here.
         </p>

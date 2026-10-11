@@ -18,6 +18,7 @@ export const MAP_LAYERS: {
   dot: string;
   kind: string;
 }[] = [
+  { key: "liveFeeds", label: "Live India alerts", short: "Live alerts", dot: "bg-fuchsia-500", kind: "Real USGS earthquakes and GDACS cyclone / flood alerts" },
   { key: "officialHazards", label: "Official warnings", short: "Official", dot: "bg-orange-500", kind: "Issued by government agencies" },
   { key: "riskEstimates", label: "Flood risk", short: "Flood risk (experimental)", dot: "bg-indigo-500", kind: "Experimental estimate, not a warning" },
   { key: "communityReports", label: "Community reports", short: "Reports", dot: "bg-sky-500", kind: "Resident observations" },
@@ -143,7 +144,7 @@ function previewUrl(type: "street" | "satellite", dark: boolean, lat: number, ln
   }
   return type === "satellite"
     ? `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`
-    : `https://a.basemaps.cartocdn.com/${dark ? "dark_all" : "light_all"}/${z}/${x}/${y}.png`;
+    : `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_${dark ? "Dark" : "Light"}_Gray_Base/MapServer/tile/${z}/${y}/${x}`;
 }
 
 export function MapTypePopover({

@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { INITIAL_INCIDENTS, INITIAL_SOS_REQUESTS, type DemoIncident, type DemoSOS } from "@/lib/demo-data";
 import type { BasemapType } from "@/lib/map-styles";
 import { useLiveLocation, type LiveLocation, type LocationStatus } from "@/lib/use-live-location";
+import type { LiveHazardsResponse } from "@/lib/live-types";
 
 export type Role = "RESIDENT" | "RESPONDER" | "ADMIN";
 
@@ -41,6 +42,27 @@ export const DEMO_USERS: Record<Role, DemoUser> = {
   },
 };
 
+/** Every seeded account selectable in the "View as" switcher. */
+export const DEMO_PROFILES: DemoUser[] = [
+  DEMO_USERS.RESIDENT,
+  {
+    id: "usr-resident-2",
+    name: "Debashis Roy",
+    email: "debashis.roy@example.org",
+    role: "RESIDENT",
+    phone: "+91 98302 34567",
+  },
+  {
+    id: "usr-resident-3",
+    name: "Sourav Mukherjee",
+    email: "sourav.m@example.org",
+    role: "RESIDENT",
+    phone: "+91 98303 45678",
+  },
+  DEMO_USERS.RESPONDER,
+  DEMO_USERS.ADMIN,
+];
+
 export interface Locality {
   id: string;
   name: string;
@@ -48,9 +70,22 @@ export interface Locality {
   lng: number;
   lat: number;
   zoom: number;
+  /** A country / state overview: too broad to place a report or SOS. */
+  isOverview?: boolean;
 }
 
+export const INDIA_OVERVIEW: Locality = {
+  id: "india",
+  name: "India (All States)",
+  description: "Live cyclone, flood and earthquake alerts nationwide",
+  lng: 80.5,
+  lat: 22.6,
+  zoom: 4.1,
+  isOverview: true,
+};
+
 export const DEMO_LOCALITIES: Locality[] = [
+  INDIA_OVERVIEW,
   {
     id: "all-kolkata",
     name: "Kolkata Metro (All Sectors)",
@@ -160,6 +195,8 @@ export interface LayerFilters {
   communityReports: boolean;
   sosAreas: boolean;
   helpCentres: boolean;
+  /** Real USGS / GDACS events across India. */
+  liveFeeds: boolean;
 }
 
 export interface NotificationItem {
@@ -177,6 +214,7 @@ interface DemoContextType {
   currentRole: Role;
   currentUser: DemoUser;
   setRole: (role: Role) => void;
+  setCurrentUserId: (id: string) => void;
   currentLocality: Locality;
   setLocality: (locality: Locality) => void;
   layerFilters: LayerFilters;
@@ -199,6 +237,9 @@ interface DemoContextType {
   /** Point chosen on the map when live location is unavailable. Not persisted. */
   manualLocation: { lat: number; lng: number } | null;
   setManualLocation: (loc: { lat: number; lng: number } | null) => void;
+  liveHazards: LiveHazardsResponse | null;
+  liveHazardsError: boolean;
+  refreshLiveHazards: () => Promise<void>;
   /** Ask the map to fly somewhere (e.g. "Show on map" from the feed). */
   mapFocus: MapFocusRequest | null;
   requestMapFocus: (target: { lat: number; lng: number; zoom?: number }) => void;
@@ -215,6 +256,7 @@ interface DemoContextType {
   submitSOS: (data: any) => Promise<{ success: boolean; data?: any; error?: string }>;
   acknowledgeSOS: (sosId: string, message?: string) => Promise<{ success: boolean; message?: string }>;
   resolveSOS: (sosId: string, message?: string) => Promise<{ success: boolean; message?: string }>;
+  postSOSUpdate: (sosId: string, message: string) => Promise<{ success: boolean; message?: string }>;
   notifications: NotificationItem[];
   refreshNotifications: () => Promise<void>;
   markNotificationRead: (id: string) => Promise<void>;
@@ -238,8 +280,8 @@ function toDemoSOS(item: any): DemoSOS {
 const DemoContext = createContext<DemoContextType | undefined>(undefined);
 
 export function DemoProvider({ children }: { children: React.ReactNode }) {
-  const [currentRole, setCurrentRole] = useState<Role>("RESIDENT");
-  const [currentLocality, setLocality] = useState<Locality>(DEMO_LOCALITIES[0]);
+  const [currentUserId, setCurrentUserId] = useState<string>(DEMO_USERS.RESIDENT.id);
+  const [currentLocality, setLocality] = useState<Locality>(INDIA_OVERVIEW);
   const [manualLocation, setManualLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [mapFocus, setMapFocus] = useState<MapFocusRequest | null>(null);
 
@@ -259,7 +301,10 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
     communityReports: true,
     sosAreas: true,
     helpCentres: true,
+    liveFeeds: true,
   });
+  const [liveHazards, setLiveHazards] = useState<LiveHazardsResponse | null>(null);
+  const [liveHazardsError, setLiveHazardsError] = useState(false);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const live = useLiveLocation();
@@ -269,7 +314,9 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
   const [sosRequests, setSosRequests] = useState<any[]>(INITIAL_SOS_REQUESTS);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
-  const currentUser = DEMO_USERS[currentRole];
+  const currentUser = DEMO_PROFILES.find((u) => u.id === currentUserId) ?? DEMO_USERS.RESIDENT;
+  const currentRole = currentUser.role;
+  const setRole = useCallback((role: Role) => setCurrentUserId(DEMO_USERS[role].id), []);
 
   // Fetch incidents
   const refreshIncidents = useCallback(async () => {
@@ -291,6 +338,10 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
             status: item.status,
             observationCount: Math.max(1, item.observations?.length ?? 0),
             reporterName: item.reporter?.name || "Citizen Reporter",
+            reporterId: item.reporterId,
+            corroboratorIds: (item.observations ?? [])
+              .filter((o: { type: string }) => o.type === "CORROBORATION")
+              .map((o: { userId: string }) => o.userId),
             observedAt: item.observedAt,
             createdAt: item.createdAt,
             photoUrls: (item.evidence ?? []).map((e: { fileUrl: string }) => e.fileUrl),
@@ -340,6 +391,24 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
     refreshSOS();
     refreshNotifications();
   }, [refreshIncidents, refreshSOS, refreshNotifications]);
+
+  // Live disaster feeds across India (server caches for 10 minutes).
+  const refreshLiveHazards = useCallback(async () => {
+    try {
+      const res = await fetch("/api/live-hazards");
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error);
+      setLiveHazards(json.data);
+      setLiveHazardsError(false);
+    } catch {
+      setLiveHazardsError(true);
+    }
+  }, []);
+  useEffect(() => {
+    void refreshLiveHazards();
+    const id = setInterval(() => void refreshLiveHazards(), 10 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [refreshLiveHazards]);
 
   const corroborateIncident = async (id: string, comment: string = "Corroborated current condition") => {
     try {
@@ -465,6 +534,25 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const postSOSUpdate = async (sosId: string, message: string) => {
+    try {
+      const res = await fetch(`/api/sos/${sosId}/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ authorUserId: currentUser.id, message }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, message: data.error || "Failed to post update" };
+      }
+      await refreshSOS();
+      await refreshNotifications();
+      return { success: true, message: "Progress update sent to the requester." };
+    } catch (err: any) {
+      return { success: false, message: err.message };
+    }
+  };
+
   const resolveSOS = async (sosId: string, message: string = "Evacuation complete.") => {
     try {
       const res = await fetch(`/api/sos/${sosId}/resolve`, {
@@ -518,7 +606,11 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       value={{
         currentRole,
         currentUser,
-        setRole: setCurrentRole,
+        setRole,
+        setCurrentUserId,
+        liveHazards,
+        liveHazardsError,
+        refreshLiveHazards,
         currentLocality,
         setLocality,
         layerFilters,
@@ -555,6 +647,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         submitSOS,
         acknowledgeSOS,
         resolveSOS,
+        postSOSUpdate,
         notifications,
         refreshNotifications,
         markNotificationRead,

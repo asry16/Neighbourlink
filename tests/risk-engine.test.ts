@@ -91,4 +91,21 @@ describe("Deterministic Flood-Risk Heuristic Engine", () => {
 
     expect(result.isStale).toBe(true);
   });
+
+  it("should use IMD rainfall categories for forecast-only heavy rain", () => {
+    expect(engine.evaluate({ rainfallRecentMm: 5, rainfallForecastMm: 70 }).riskLevel).toBe("ELEVATED");
+    const veryHeavy = engine.evaluate({ rainfallRecentMm: 5, rainfallForecastMm: 120 });
+    expect(veryHeavy.riskLevel).toBe("HIGH");
+    expect(veryHeavy.contributingFactors.join(" ")).toContain("very heavy rainfall");
+  });
+
+  it("should raise risk from live river discharge above its seasonal median", () => {
+    expect(engine.evaluate({ rainfallRecentMm: 2, rainfallForecastMm: 2, riverDischargeRatio: 1.6 }).riskLevel).toBe("ELEVATED");
+    expect(engine.evaluate({ rainfallRecentMm: 2, rainfallForecastMm: 2, riverDischargeRatio: 3 }).riskLevel).toBe("HIGH");
+    expect(engine.evaluate({ rainfallRecentMm: 2, rainfallForecastMm: 2, riverDischargeRatio: 1.1 }).riskLevel).toBe("LOW");
+  });
+
+  it("should still require rainfall even when river data is present", () => {
+    expect(engine.evaluate({ riverDischargeRatio: 4 }).riskLevel).toBe("INSUFFICIENT_DATA");
+  });
 });

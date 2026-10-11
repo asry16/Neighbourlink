@@ -6,15 +6,29 @@ import {
   PhoneCall,
   CheckCircle,
   CheckCircle2,
+  Send,
 } from "lucide-react";
 import { Badge, humanize } from "@/components/ui/primitives";
 import { SOS_CATEGORY_LABEL, SOS_TONE } from "@/lib/status";
 import { useDemo } from "@/context/demo-context";
 
 export function ResponderView({ embedded = false }: { embedded?: boolean }) {
-  const { currentUser, sosRequests, acknowledgeSOS, resolveSOS } = useDemo();
+  const { currentUser, sosRequests, acknowledgeSOS, resolveSOS, postSOSUpdate } = useDemo();
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [updateDrafts, setUpdateDrafts] = useState<Record<string, string>>({});
+
+  const handlePostUpdate = async (e: React.FormEvent, id: string) => {
+    e.preventDefault();
+    const message = updateDrafts[id]?.trim();
+    if (!message || isProcessing) return;
+    setIsProcessing(true);
+    const res = await postSOSUpdate(id, message);
+    setIsProcessing(false);
+    if (res.success) setUpdateDrafts((d) => ({ ...d, [id]: "" }));
+    setFeedback(res.message || "Progress update sent.");
+    setTimeout(() => setFeedback(null), 4000);
+  };
 
   const handleAcknowledge = async (id: string) => {
     if (isProcessing) return;
@@ -167,11 +181,11 @@ export function ResponderView({ embedded = false }: { embedded?: boolean }) {
                     className="py-2 px-4 rounded-xl bg-ink text-canvas hover:opacity-90 font-semibold text-[12.5px] shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
                   >
                     <CheckCircle className="w-3.5 h-3.5" />
-                    <span>Acknowledge & Dispatch Boat Unit</span>
+                    <span>{sos.category === "TRAPPED_FLOOD" ? "Acknowledge & Dispatch Boat Unit" : "Acknowledge & Dispatch Unit"}</span>
                   </button>
                 )}
 
-                {sos.status === "ACKNOWLEDGED" && (
+                {(sos.status === "ACKNOWLEDGED" || sos.status === "ASSISTANCE_REPORTED") && (
                   <button
                     onClick={() => handleMarkResolved(sos.id)}
                     className="py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[12.5px] shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
@@ -189,6 +203,29 @@ export function ResponderView({ embedded = false }: { embedded?: boolean }) {
                   <span>Call Requester Directly</span>
                 </a>
               </div>
+
+              {(sos.status === "ACKNOWLEDGED" || sos.status === "ASSISTANCE_REPORTED") && (
+                <form onSubmit={(e) => handlePostUpdate(e, sos.id)} className="flex gap-2">
+                  <label htmlFor={`sos-update-${sos.id}`} className="sr-only">
+                    Progress update for {sos.trackingCode}
+                  </label>
+                  <input
+                    id={`sos-update-${sos.id}`}
+                    value={updateDrafts[sos.id] ?? ""}
+                    onChange={(e) => setUpdateDrafts((d) => ({ ...d, [sos.id]: e.target.value }))}
+                    placeholder="Post a progress update, e.g. Boat unit 5 min away"
+                    className="flex-1 min-w-0 h-9 px-3 rounded-xl border border-line bg-surface text-[12.5px] text-ink focus:outline-none focus:border-accent focus:ring-[3px] focus:ring-accent-soft"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isProcessing || !updateDrafts[sos.id]?.trim()}
+                    className="h-9 px-3 rounded-xl border border-line hover:bg-surface-2 text-ink font-medium text-[12.5px] flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Send update</span>
+                  </button>
+                </form>
+              )}
             </div>
           ))}
         </div>

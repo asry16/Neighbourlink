@@ -41,6 +41,33 @@ describe("Incident Corroboration Anti-Abuse", () => {
     await prisma.incident.delete({ where: { id: incident.id } });
   });
 
+  it("should reject corroboration by the original reporter and on resolved reports", async () => {
+    const incident = await IncidentService.createIncident({
+      category: "FLOOD_WATERLOGGING",
+      categoryLabel: "Waterlogging / Flooding",
+      latitude: 22.57,
+      longitude: 88.43,
+      localityName: "Salt Lake Test Sector",
+      description: "Self-corroboration test",
+      reportedImpact: "Pedestrian caution",
+      observedAt: new Date(),
+      reporterId: "usr-resident-1",
+    });
+
+    // The reporter cannot count as their own independent observer
+    await expect(
+      IncidentService.corroborateIncident(incident.id, "usr-resident-1", "My own report")
+    ).rejects.toThrow("cannot corroborate your own report");
+
+    // Resolved reports can no longer be corroborated back to active
+    await IncidentService.markResolved(incident.id, "usr-responder-1", "Cleared");
+    await expect(
+      IncidentService.corroborateIncident(incident.id, "usr-resident-2", "Late observation")
+    ).rejects.toThrow("already been resolved");
+
+    await prisma.incident.delete({ where: { id: incident.id } });
+  });
+
   it("should not delete the incident when a dispute is filed", async () => {
     const incident = await IncidentService.createIncident({
       category: "STORM_DAMAGE",

@@ -20,7 +20,7 @@ export function MapProviderSettings({ embedded = false }: { embedded?: boolean }
       <div className="flex flex-wrap items-center justify-between gap-2">
         {!embedded && <h2 className="text-[16px] font-semibold text-ink">Map provider</h2>}
         <Badge tone={usingMapTiler ? "ok" : "warn"}>
-          {usingMapTiler ? "MapTiler" : "Open fallback tiles (CARTO / Esri)"}
+          {usingMapTiler ? "MapTiler" : "Open fallback tiles (Esri)"}
         </Badge>
       </div>
       <p className="mt-1.5 text-[13px] text-ink-muted">

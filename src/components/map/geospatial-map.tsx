@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import * as maplibregl from "maplibre-gl";
 import { useTheme } from "next-themes";
 import {
@@ -12,6 +12,7 @@ import {
   Plus,
   Minus,
   Maximize2,
+  Footprints,
 } from "lucide-react";
 import { getMapStyle, getMapTilerKey, LIGHT_MAP_STYLE, DARK_MAP_STYLE } from "@/lib/map-styles";
 import { useMapApiKeyOverride } from "@/lib/map-key";
@@ -29,12 +30,14 @@ import {
   detailsButtonHTML,
   esc,
   labelHTML,
+  liveHazardHTML,
   manualLocationHTML,
   pickPinHTML,
   pinHTML,
   popupHTML,
   sosAreaHTML,
   sosPinHTML,
+  sourceLinkHTML,
   userLocationHTML,
   wireDetailsButton,
 } from "./marker-html";
@@ -42,6 +45,8 @@ import { useOverlay, isDrawer } from "@/context/overlay-context";
 import { LayersPopover, MAP_LAYERS, MapTypePopover } from "./map-popovers";
 import { useEscape } from "@/components/ui/a11y";
 import { formatAccuracy } from "@/lib/use-live-location";
+import { WalkMode, type WalkPoi } from "./walk-mode";
+import { WalkStartDialog, type WalkStart } from "./walk-start-dialog";
 
 const INCIDENT_PIN_BG: Record<string, string> = {
   UNVERIFIED: "bg-amber-500",
@@ -85,6 +90,7 @@ export function GeospatialMap() {
     setIs3D,
     incidents,
     sosRequests,
+    liveHazards,
     liveLocation,
     locationStatus,
     locationError,
@@ -122,6 +128,8 @@ export function GeospatialMap() {
   const appliedStyleRef = useRef<string | null>(null);
   const pendingFlyRef = useRef<maplibregl.FlyToOptions | null>(null);
   const [visibleIncidentCount, setVisibleIncidentCount] = useState<number | null>(null);
+  const [walk, setWalk] = useState<{ map: maplibregl.Map; start: WalkStart } | null>(null);
+  const [choosingWalkStart, setChoosingWalkStart] = useState(false);
 
   // Compute visible incidents within current map viewport
   const updateVisibleCount = useCallback(() => {
@@ -761,6 +769,38 @@ export function GeospatialMap() {
       });
     }
 
+    // Live India feeds (USGS earthquakes, GDACS cyclones / floods / droughts)
+    if (layerFilters.liveFeeds && liveHazards) {
+      liveHazards.hazards.forEach((h) => {
+        const el = document.createElement("div");
+        el.className = "marker-live cursor-pointer";
+        el.innerHTML = liveHazardHTML(h);
+        const when = new Date(h.startedAt);
+        const status = h.isCurrent
+          ? "Active"
+          : h.endedAt
+            ? `Ended ${formatDateTime(h.endedAt)}`
+            : "Past event";
+        const popup = new maplibregl.Popup({ offset: 22 }).setHTML(
+          popupHTML({
+            badge: `Live · ${h.source} · ${humanize(h.type)}`,
+            tone: h.alertLevel === "RED" ? "danger" : h.alertLevel === "ORANGE" ? "warn" : "accent",
+            code: h.alertLevel ? `${h.alertLevel} alert` : undefined,
+            title: h.title,
+            body: esc(h.detail),
+            meta: `${esc(status)} · started ${esc(formatDateTime(when.toISOString()))}<br/>Real-time public feed, not a Neighbourlink report.`,
+            footer: sourceLinkHTML(h.url, h.source === "USGS" ? "USGS event page" : "GDACS report"),
+          })
+        );
+        el.dataset.id = h.id;
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat([h.longitude, h.latitude])
+          .setPopup(popup)
+          .addTo(map.current!);
+        markersRef.current.push(marker);
+      });
+    }
+
     // Update count of markers visible in viewport
     updateVisibleCount();
   }, [
@@ -769,6 +809,7 @@ export function GeospatialMap() {
     currentRole,
     incidents,
     sosRequests,
+    liveHazards,
     updateVisibleCount,
     openOverlay,
   ]);
@@ -796,6 +837,58 @@ export function GeospatialMap() {
     const right = drawerOpen && desktop ? (window.matchMedia("(min-width: 1024px)").matches ? 420 : 380) : 0;
     m.easeTo({ padding: { top: 0, bottom: 0, left: 0, right }, duration: 300 });
   }, [drawerOpen, mapLoaded]);
+
+  // Walk mode first asks where to start (GPS or a typed city).
+  const startWalk = () => {
+    setPopover(null);
+    setChoosingWalkStart(true);
+  };
+  const beginWalk = (start: WalkStart) => {
+    const m = map.current;
+    setChoosingWalkStart(false);
+    if (m) setWalk({ map: m, start });
+  };
+  const mapCentre = () => {
+    const c = map.current?.getCenter();
+    return c ? { lat: c.lat, lng: c.lng } : { lat: currentLocality.lat, lng: currentLocality.lng };
+  };
+  const exitWalk = useCallback(() => setWalk(null), []);
+  const openWalkDetails = useCallback((id: string) => openDetailsRef.current(id), []);
+
+  // Things worth warning a walker about, from the layers currently shown.
+  const walkPois = useMemo<WalkPoi[]>(() => {
+    const isResponder = currentRole === "RESPONDER" || currentRole === "ADMIN";
+    const pois: WalkPoi[] = [];
+    if (layerFilters.communityReports) {
+      incidents
+        .filter((i) => i.status !== "RESOLVED")
+        .forEach((i) => pois.push({ id: i.id, lat: i.latitude, lng: i.longitude, label: i.categoryLabel, kind: "report" }));
+    }
+    if (layerFilters.sosAreas) {
+      sosRequests
+        .filter((s: any) => s.status !== "RESOLVED")
+        .forEach((s: any) =>
+          pois.push({
+            id: s.id,
+            lat: isResponder ? s.latitude || s.exactLatitude : s.fuzzyLatitude || s.latitude,
+            lng: isResponder ? s.longitude || s.exactLongitude : s.fuzzyLongitude || s.longitude,
+            label: SOS_CATEGORY_LABEL[s.category as keyof typeof SOS_CATEGORY_LABEL] ?? "Emergency request",
+            kind: "sos",
+          })
+        );
+    }
+    if (layerFilters.officialHazards) {
+      INITIAL_OFFICIAL_HAZARDS.forEach((h) =>
+        pois.push({ id: h.id, lat: h.centerLat, lng: h.centerLng, label: h.headline, kind: "official" })
+      );
+    }
+    if (layerFilters.helpCentres) {
+      INITIAL_HELP_CENTRES.forEach((c) =>
+        pois.push({ id: c.id, lat: c.latitude, lng: c.longitude, label: c.name, kind: "help" })
+      );
+    }
+    return pois;
+  }, [incidents, sosRequests, layerFilters, currentRole]);
 
   if (!webGlSupported) {
     return (
@@ -927,7 +1020,7 @@ export function GeospatialMap() {
       </div>
 
       {/* Empty viewport hint */}
-      {visibleIncidentCount === 0 && mapLoaded && !pickingLocation && (
+      {visibleIncidentCount === 0 && mapLoaded && !pickingLocation && !walk && (
         <div className="absolute bottom-4 lg:bottom-auto lg:top-4 left-1/2 -translate-x-1/2 z-20 nl-glass rounded-full pl-4 pr-1.5 h-11 md:h-10 flex items-center gap-3 text-[13px] animate-rise whitespace-nowrap">
           <span className="text-ink-muted">No active reports in this view</span>
           <button
@@ -966,6 +1059,16 @@ export function GeospatialMap() {
         </div>
 
         <div className="nl-glass rounded-xl overflow-hidden flex flex-col divide-y divide-line">
+          <button
+            onClick={walk ? exitWalk : startWalk}
+            disabled={!mapLoaded}
+            aria-pressed={!!walk}
+            aria-label={walk ? "Exit walk mode" : "Walk the map as a character"}
+            title={walk ? "Exit walk mode" : "Walk mode"}
+            className={`${ctrl} ${walk ? "!text-accent" : ""}`}
+          >
+            <Footprints className="size-4" />
+          </button>
           <button
             onClick={locateMe}
             id="map-live-location-btn"
@@ -1023,6 +1126,23 @@ export function GeospatialMap() {
           </button>
         </div>
       </div>
+
+      <WalkStartDialog
+        open={choosingWalkStart}
+        onClose={() => setChoosingWalkStart(false)}
+        onStart={beginWalk}
+        mapCentre={mapCentre}
+      />
+
+      {walk && (
+        <WalkMode
+          map={walk.map}
+          start={walk.start}
+          pois={walkPois}
+          onExit={exitWalk}
+          onOpenDetails={openWalkDetails}
+        />
+      )}
 
       {/* Compact legend (desktop); on mobile the Map panel doubles as legend */}
       <div className="absolute bottom-4 left-4 z-20 hidden lg:flex items-center gap-4 nl-glass rounded-[10px] h-9 px-3.5">

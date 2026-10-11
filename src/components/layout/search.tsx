@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useCallback, useId, useMemo, useRef, useState } from "react";
-import { Search as SearchIcon, X, MapPin, Star, TriangleAlert, MessagesSquare, Building2 } from "lucide-react";
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Search as SearchIcon, X, MapPin, Star, TriangleAlert, MessagesSquare, Building2, Navigation2 } from "lucide-react";
+import type { PlaceResult } from "@/lib/places";
 import { useDemo, DEMO_LOCALITIES } from "@/context/demo-context";
 import { useOverlay } from "@/context/overlay-context";
 import { INITIAL_OFFICIAL_HAZARDS, INITIAL_HELP_CENTRES } from "@/lib/demo-data";
@@ -10,13 +11,13 @@ import { useDismiss } from "@/lib/use-dismiss";
 import { cn } from "@/lib/utils";
 
 /**
- * Locality-first search over data already in the app (areas, reports,
- * official warnings, help centres). Nothing typed here leaves the browser.
+ * Locality-first search: areas, reports, official warnings and help centres
+ * already in the app, plus any city / town in India via the place search.
  */
 
 interface Result {
   id: string;
-  kind: "Saved area" | "Area" | "Report" | "Official warning" | "Help centre";
+  kind: "Saved area" | "Area" | "Place in India" | "Report" | "Official warning" | "Help centre";
   title: string;
   subtitle: string;
   icon: typeof MapPin;
@@ -32,6 +33,25 @@ export function Search() {
   const [active, setActive] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
   const listId = useId();
+  const [places, setPlaces] = useState<PlaceResult[]>([]);
+  const placeRequest = useRef(0);
+
+  // Any city / town in India (debounced; only the latest response counts).
+  useEffect(() => {
+    const q = query.trim();
+    const id = ++placeRequest.current;
+    if (q.length < 2) return;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/geocode?country=IN&q=${encodeURIComponent(q)}`);
+        const json = await res.json();
+        if (id === placeRequest.current && json.success) setPlaces(json.data);
+      } catch {
+        /* place search is optional */
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [query]);
 
   const close = useCallback(() => setOpen(false), []);
   useDismiss(ref, open, close);
@@ -74,6 +94,26 @@ export function Search() {
     const out: Result[] = DEMO_LOCALITIES.filter((l) => has(l.name, l.description)).map((l) =>
       area(l, saved.includes(l.id))
     );
+    places.slice(0, 5).forEach((p) =>
+      out.push({
+        id: `place-${p.id}`,
+        kind: "Place in India",
+        title: p.name,
+        subtitle: [p.region, p.country].filter(Boolean).join(", "),
+        icon: Navigation2,
+        onSelect: () => {
+          setLocality({
+            id: `place-${p.id}`,
+            name: p.region ? `${p.name}, ${p.region}` : p.name,
+            description: "Live weather, air quality and flood risk",
+            lat: p.latitude,
+            lng: p.longitude,
+            zoom: 11.5,
+          });
+          void closeOverlay();
+        },
+      })
+    );
     INITIAL_OFFICIAL_HAZARDS.filter((h) => has(h.headline, h.affectedArea, h.source)).forEach((h) =>
       out.push({
         id: h.id,
@@ -109,8 +149,8 @@ export function Search() {
         },
       })
     );
-    return out.slice(0, 8);
-  }, [query, incidents, saved, setLocality, closeOverlay, focusOn, openOverlay]);
+    return out.slice(0, 10);
+  }, [query, places, incidents, saved, setLocality, closeOverlay, focusOn, openOverlay]);
 
   const choose = (r: Result) => {
     r.onSelect();
@@ -144,13 +184,14 @@ export function Search() {
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
+            if (e.target.value.trim().length < 2) setPlaces([]);
             setActive(0);
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
           placeholder={currentLocality.name}
-          aria-label={`Search areas, reports and help centres. Current area: ${currentLocality.name}`}
+          aria-label={`Search any city in India, reports and help centres. Current area: ${currentLocality.name}`}
           role="combobox"
           aria-expanded={showPanel}
           aria-controls={listId}
@@ -172,7 +213,7 @@ export function Search() {
           {query.trim().length === 0 && <div className="nl-eyebrow px-2.5 pt-1.5 pb-1">Choose an area</div>}
           <ul id={listId} role="listbox" aria-label="Search results">
             {results.length === 0 ? (
-              <li className="px-3 py-6 text-center text-[13px] text-ink-subtle">No matching areas, reports or help centres.</li>
+              <li className="px-3 py-6 text-center text-[13px] text-ink-subtle">No matching places, reports or help centres.</li>
             ) : (
               results.map((r, i) => (
                 <li
