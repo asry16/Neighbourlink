@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 
 interface Result {
   id: string;
-  kind: "Saved area" | "Area" | "Place in India" | "Report" | "Official warning" | "Help centre";
+  kind: "Saved area" | "Area" | "Place" | "Report" | "Official warning" | "Help centre";
   title: string;
   subtitle: string;
   icon: typeof MapPin;
@@ -36,14 +36,14 @@ export function Search() {
   const [places, setPlaces] = useState<PlaceResult[]>([]);
   const placeRequest = useRef(0);
 
-  // Any city / town in India (debounced; only the latest response counts).
+  // Any city / town in the world, India first (debounced; latest response wins).
   useEffect(() => {
     const q = query.trim();
     const id = ++placeRequest.current;
     if (q.length < 2) return;
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/geocode?country=IN&q=${encodeURIComponent(q)}`);
+        const res = await fetch(`/api/geocode?prefer=IN&q=${encodeURIComponent(q)}`);
         const json = await res.json();
         if (id === placeRequest.current && json.success) setPlaces(json.data);
       } catch {
@@ -97,14 +97,14 @@ export function Search() {
     places.slice(0, 5).forEach((p) =>
       out.push({
         id: `place-${p.id}`,
-        kind: "Place in India",
+        kind: "Place",
         title: p.name,
         subtitle: [p.region, p.country].filter(Boolean).join(", "),
         icon: Navigation2,
         onSelect: () => {
           setLocality({
             id: `place-${p.id}`,
-            name: p.region ? `${p.name}, ${p.region}` : p.name,
+            name: [p.name, p.region ?? p.country].filter(Boolean).join(", "),
             description: "Live weather, air quality and flood risk",
             lat: p.latitude,
             lng: p.longitude,
@@ -191,7 +191,7 @@ export function Search() {
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
           placeholder={currentLocality.name}
-          aria-label={`Search any city in India, reports and help centres. Current area: ${currentLocality.name}`}
+          aria-label={`Search any city or town, reports and help centres. Current area: ${currentLocality.name}`}
           role="combobox"
           aria-expanded={showPanel}
           aria-controls={listId}

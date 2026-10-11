@@ -36,7 +36,28 @@ function esriCanvasStyle(tone: "Light" | "Dark"): StyleSpecification {
   };
 }
 
-export const LIGHT_MAP_STYLE: StyleSpecification = esriCanvasStyle("Light");
+export const LIGHT_MAP_STYLE: StyleSpecification = {
+  version: 8,
+  sources: {
+    "esri-street-base": {
+      type: "raster",
+      tiles: [
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+      ],
+      tileSize: 256,
+      maxzoom: 19,
+      attribution:
+        "Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom",
+    },
+  },
+  layers: [
+    {
+      id: "esri-street-layer",
+      type: "raster",
+      source: "esri-street-base",
+    },
+  ],
+};
 
 export const DARK_MAP_STYLE: StyleSpecification = esriCanvasStyle("Dark");
 

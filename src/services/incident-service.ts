@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { nextTrackingCode } from "@/lib/tracking-code";
 
 export interface CreateIncidentInput {
   category: string;
@@ -75,8 +76,12 @@ export class IncidentService {
    */
   static async createIncident(input: CreateIncidentInput) {
     // Generate tracking code
-    const count = await prisma.incident.count();
-    const trackingCode = `INC-${new Date().getFullYear()}-${String(count + 1).padStart(4, "0")}`;
+    const year = new Date().getFullYear();
+    const existing = await prisma.incident.findMany({
+      where: { trackingCode: { startsWith: `INC-${year}-` } },
+      select: { trackingCode: true },
+    });
+    const trackingCode = nextTrackingCode("INC", year, existing.map((r) => r.trackingCode));
 
     const incident = await prisma.incident.create({
       data: {

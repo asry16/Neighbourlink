@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { nextTrackingCode } from "@/lib/tracking-code";
 
 export interface CreateSOSInput {
   requesterId: string;
@@ -50,8 +51,12 @@ export class SOSService {
    * Routes to nearest registered participating responder organisation
    */
   static async createSOS(input: CreateSOSInput) {
-    const count = await prisma.sOSRequest.count();
-    const trackingCode = `SOS-${new Date().getFullYear()}-${String(count + 1).padStart(4, "0")}`;
+    const year = new Date().getFullYear();
+    const existing = await prisma.sOSRequest.findMany({
+      where: { trackingCode: { startsWith: `SOS-${year}-` } },
+      select: { trackingCode: true },
+    });
+    const trackingCode = nextTrackingCode("SOS", year, existing.map((r) => r.trackingCode));
 
     // Fuzz coordinates (~1km grid box)
     const fuzzyLatitude = this.roundToFuzzy(input.latitude);

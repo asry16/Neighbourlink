@@ -10,6 +10,8 @@ export interface WalkStart {
   lng: number;
   /** Shown in walk mode so people know where they are. */
   label: string;
+  /** Name other walkers see above your character. */
+  name: string;
 }
 
 type GpsState = { status: "idle" } | { status: "locating" } | { status: "error"; message: string };
@@ -23,13 +25,18 @@ export function WalkStartDialog({
   onClose,
   onStart,
   mapCentre,
+  defaultName,
 }: {
   open: boolean;
   onClose: () => void;
   onStart: (start: WalkStart) => void;
   mapCentre: () => { lat: number; lng: number };
+  defaultName: string;
 }) {
   const [gps, setGps] = useState<GpsState>({ status: "idle" });
+  const [name, setName] = useState(defaultName);
+  const go = (place: { lat: number; lng: number; label: string }) =>
+    onStart({ ...place, name: name.trim() || defaultName });
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PlaceResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -45,7 +52,8 @@ export function WalkStartDialog({
       setSearching(true);
       setSearchError(null);
       try {
-        const res = await fetch(`/api/geocode?country=IN&q=${encodeURIComponent(q)}`);
+        // Whole world, with places in India listed first.
+        const res = await fetch(`/api/geocode?prefer=IN&q=${encodeURIComponent(q)}`);
         const json = await res.json();
         if (id !== requestId.current) return;
         if (!res.ok || !json.success) throw new Error(json.error);
@@ -68,7 +76,7 @@ export function WalkStartDialog({
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setGps({ status: "idle" });
-        onStart({ lat: pos.coords.latitude, lng: pos.coords.longitude, label: "Your location" });
+        go({ lat: pos.coords.latitude, lng: pos.coords.longitude, label: "Your location" });
       },
       (err) =>
         setGps({
@@ -91,10 +99,23 @@ export function WalkStartDialog({
       onClose={onClose}
       eyebrow="Walk mode"
       title="Where do you want to start?"
-      description="Your character appears there, with the live weather for that spot."
+      description="Your character appears there with the live weather. Anyone else walking shows up too."
       size="sm"
     >
       <div className="flex flex-col gap-4">
+        <div>
+          <label htmlFor="walk-name" className="block text-[13px] font-medium text-ink mb-1.5">
+            Your name <span className="font-normal text-ink-subtle">(shown to other walkers)</span>
+          </label>
+          <input
+            id="walk-name"
+            value={name}
+            maxLength={24}
+            onChange={(e) => setName(e.target.value)}
+            autoComplete="nickname"
+            className="w-full h-11 px-3 rounded-lg border border-line bg-surface text-[14px] text-ink focus:outline-none focus:border-accent focus:ring-[3px] focus:ring-accent-soft"
+          />
+        </div>
         <button
           onClick={useGps}
           disabled={gps.status === "locating"}
@@ -124,7 +145,7 @@ export function WalkStartDialog({
 
         <div>
           <label htmlFor="walk-city" className="block text-[13px] font-medium text-ink mb-1.5">
-            Enter your city or town in India
+            Or enter a city or town
           </label>
           <div className="relative">
             <Search className="size-4 text-ink-subtle absolute left-3 top-1/2 -translate-y-1/2" />
@@ -141,10 +162,10 @@ export function WalkStartDialog({
                 if (e.key === "Enter" && results[0]) {
                   e.preventDefault();
                   const p = results[0];
-                  onStart({ lat: p.latitude, lng: p.longitude, label: placeLabel(p) });
+                  go({ lat: p.latitude, lng: p.longitude, label: placeLabel(p) });
                 }
               }}
-              placeholder="e.g. Delhi, Guwahati, Chennai, Shimla"
+              placeholder="e.g. Guwahati, Shimla, Chennai, London"
               className="w-full h-11 pl-9 pr-3 rounded-lg border border-line bg-surface text-[14px] text-ink focus:outline-none focus:border-accent focus:ring-[3px] focus:ring-accent-soft"
             />
           </div>
@@ -161,7 +182,7 @@ export function WalkStartDialog({
               {results.map((p) => (
                 <li key={p.id}>
                   <button
-                    onClick={() => onStart({ lat: p.latitude, lng: p.longitude, label: placeLabel(p) })}
+                    onClick={() => go({ lat: p.latitude, lng: p.longitude, label: placeLabel(p) })}
                     className="w-full min-h-11 px-3 py-2 rounded-lg hover:bg-surface-2 flex items-center gap-3 text-left"
                   >
                     <MapPin className="size-4 shrink-0 text-ink-subtle" />
@@ -179,7 +200,7 @@ export function WalkStartDialog({
         </div>
 
         <button
-          onClick={() => onStart({ ...mapCentre(), label: "Map centre" })}
+          onClick={() => go({ ...mapCentre(), label: "Map centre" })}
           className="self-start h-9 px-2 -ml-2 rounded-lg text-[13px] text-ink-muted hover:bg-surface-2 hover:text-ink flex items-center gap-2"
         >
           <Crosshair className="size-4" /> Start where the map is now

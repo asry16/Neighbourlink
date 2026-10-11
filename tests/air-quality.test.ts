@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { indiaNaqi, smogLevel } from "@/lib/air-quality";
+import { indiaNaqi, smogLevel, usAqiCategory, aqiPresentation } from "@/lib/air-quality";
 
 describe("India National AQI (CPCB)", () => {
   it("rates clean air as Good", () => {
@@ -30,5 +30,20 @@ describe("India National AQI (CPCB)", () => {
   it("only shows smog from Moderate upward", () => {
     expect(smogLevel("Satisfactory")).toBe(0);
     expect(smogLevel("Poor")).toBeGreaterThan(0);
+  });
+});
+
+describe("US AQI (outside India)", () => {
+  it("uses EPA category boundaries", () => {
+    expect(usAqiCategory(50)).toBe("Good");
+    expect(usAqiCategory(51)).toBe("Moderate");
+    expect(usAqiCategory(151)).toBe("Unhealthy");
+    expect(usAqiCategory(350)).toBe("Hazardous");
+  });
+
+  it("presents either scale with a tone, advice and smog level", () => {
+    expect(aqiPresentation("IN_NAQI", "Severe").smog).toBeGreaterThan(0.5);
+    expect(aqiPresentation("US_AQI", "Good").smog).toBe(0);
+    expect(aqiPresentation("US_AQI", "Unhealthy").tone).toContain("bg-");
   });
 });
