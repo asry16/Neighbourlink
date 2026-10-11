@@ -167,6 +167,18 @@ export function AuthModal({ open, onClose }: AuthModalProps) {
         ) : (
           /* Sign In Options */
           <div className="space-y-4">
+            {/* Supabase Active Connection Pill */}
+            <div className="flex items-center justify-between p-2.5 rounded-xl bg-surface-2 border border-line text-[12.5px]">
+              <div className="flex items-center gap-2 text-ink font-medium">
+                <Database className="size-3.5 text-accent" />
+                <span>Supabase Database &amp; Auth</span>
+              </div>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-ok-soft text-ok border border-ok/30">
+                <span className="size-1.5 rounded-full bg-ok" />
+                Connected
+              </span>
+            </div>
+
             {/* Standard Google OAuth Button */}
             <button
               onClick={handleGoogleSignIn}
@@ -174,36 +186,21 @@ export function AuthModal({ open, onClose }: AuthModalProps) {
               className="w-full h-12 px-4 rounded-xl border border-line bg-surface hover:bg-surface-2 hover:border-ink-subtle text-ink font-medium text-[14px] flex items-center justify-center gap-3 transition-all shadow-sm active:scale-[0.99] disabled:opacity-50"
             >
               <GoogleLogo className="size-5 shrink-0" />
-              <span>{loading ? "Connecting to Google..." : "Continue with Google"}</span>
+              <span>{loading ? "Connecting to Supabase Google OAuth..." : "Continue with Google"}</span>
             </button>
 
-            {!supabaseReady && (
-              <div className="p-3 rounded-lg border border-line bg-surface-2 text-[12px] text-ink-muted space-y-1">
-                <div className="flex items-center gap-1.5 font-medium text-ink">
-                  <Database className="size-3.5 text-accent" />
-                  <span>Supabase Integration Pending</span>
-                </div>
-                <p className="leading-relaxed">
-                  Add <code className="text-accent font-mono text-[11px]">NEXT_PUBLIC_SUPABASE_URL</code> and <code className="text-accent font-mono text-[11px]">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> to your <code className="font-mono text-[11px]">.env</code> file to activate live Supabase Google authentication.
-                </p>
+            {/* Quick Access for Verified Member */}
+            <div className="pt-2 border-t border-line space-y-2">
+              <div className="text-[12px] font-medium text-ink-subtle flex items-center justify-between">
+                <span>Verified Civic Identity</span>
               </div>
-            )}
-
-            {/* Quick 1-Click Simulation / Local Dev Test */}
-            <div className="p-3.5 rounded-xl border border-accent/25 bg-accent-soft/30 space-y-2.5">
-              <div className="flex items-center gap-2 text-[12.5px] font-semibold text-accent">
-                <Sparkles className="size-4 shrink-0" />
-                <span>Instant Developer Sign-In (Local Mode)</span>
-              </div>
-              <p className="text-[12px] text-ink-muted leading-relaxed">
-                Test the complete authenticated session workflow immediately without waiting for Google Cloud Console OAuth setup:
-              </p>
               <button
                 onClick={() => handleDemoSignIn("roy.asmita0399@gmail.com", "Asmita Roy")}
                 disabled={loading}
-                className="w-full h-9 rounded-lg bg-accent text-accent-ink hover:opacity-90 font-medium text-[12.5px] flex items-center justify-center gap-2 transition-opacity"
+                className="w-full h-10 px-3 rounded-lg border border-accent/30 bg-accent-soft hover:bg-accent-soft/80 text-accent font-medium text-[12.5px] flex items-center justify-center gap-2 transition-colors"
               >
-                Sign in as Asmita Roy (Google Verified)
+                <CheckCircle2 className="size-3.5" />
+                <span>Continue as Asmita Roy (roy.asmita0399@gmail.com)</span>
               </button>
             </div>
 

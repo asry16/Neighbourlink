@@ -379,7 +379,9 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
             isGoogleUser: true,
           };
           setAuthUser(userObj);
-          setCurrentUserId((prev) => (prev === DEMO_USERS.RESIDENT.id ? userObj.id : prev));
+          if (currentUserId === DEMO_USERS.RESIDENT.id) {
+            setCurrentUserId(userObj.id);
+          }
         } else {
           setAuthUser(null);
         }

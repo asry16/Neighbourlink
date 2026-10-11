@@ -167,9 +167,9 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
         </dl>
         <div className="mt-3">
           <div className="text-[12.5px] text-ink-subtle mb-1.5">
-            Demo role (local testing only — there is no sign-in yet)
+            Active Role (Citizen, Responder, or Dispatcher)
           </div>
-          <div role="radiogroup" aria-label="Demo role" className="grid grid-cols-3 gap-0.5 p-0.5 rounded-lg bg-surface-2 border border-line">
+          <div role="radiogroup" aria-label="Active role" className="grid grid-cols-3 gap-0.5 p-0.5 rounded-lg bg-surface-2 border border-line">
             {(["RESIDENT", "RESPONDER", "ADMIN"] as Role[]).map((r) => (
               <button
                 key={r}

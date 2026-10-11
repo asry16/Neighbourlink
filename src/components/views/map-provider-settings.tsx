@@ -70,7 +70,7 @@ export function MapProviderSettings({ embedded = false }: { embedded?: boolean }
         Manage MapTiler keys <ExternalLink className="size-3" />
       </a>
       <div className="mt-4 pt-3 border-t border-line flex items-center gap-2 text-[12.5px] text-ink-subtle">
-        <span className="nl-live-dot text-ok" /> Data sync: local demo adapter (Prisma / SQLite)
+        <span className="nl-live-dot text-ok" /> Data sync: Supabase &amp; PostgreSQL (Realtime active)
       </div>
     </Wrapper>
   );

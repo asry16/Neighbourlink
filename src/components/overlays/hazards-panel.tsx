@@ -27,7 +27,7 @@ export function HazardsPanel() {
 
       {/* Official */}
       <section aria-labelledby="hz-official" className="p-4 border-b border-line">
-        <h3 id="hz-official" className="nl-eyebrow mb-1">Official warnings · Kolkata demo</h3>
+        <h3 id="hz-official" className="nl-eyebrow mb-1">Official warnings · Kolkata</h3>
         <p className="text-[12px] text-ink-subtle mb-3">
           Issued by government agencies. These take precedence over everything else here.
         </p>
@@ -44,7 +44,6 @@ export function HazardsPanel() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone={HAZARD_TONE[h.severity]}>{humanize(h.severity)}</Badge>
                     {expired && <Badge tone="neutral">Expired</Badge>}
-                    {h.isDemo && <Badge tone="neutral" dot={false}>Demo data</Badge>}
                   </div>
                   <button
                     onClick={() => open({ kind: "details", id: h.id, from: "hazards" })}

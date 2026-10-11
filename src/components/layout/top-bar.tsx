@@ -79,11 +79,7 @@ const iconButton =
 export function TopBar({ onOpenEmergency }: { onOpenEmergency: () => void }) {
   const {
     currentRole,
-    currentUser,
-    setCurrentUserId,
     authUser,
-    isGoogleUser,
-    profiles,
     logout,
     notifications,
     markNotificationRead,
@@ -199,138 +195,112 @@ export function TopBar({ onOpenEmergency }: { onOpenEmergency: () => void }) {
           112
         </button>
 
-        {/* Google Sign In Quick Action */}
-        {!authUser && (
+        {/* Sign In with Google when signed out */}
+        {!authUser ? (
           <button
             onClick={() => void open({ kind: "auth" })}
             aria-label="Sign in with Google"
-            className="h-10 px-3 rounded-lg border border-line bg-surface hover:bg-surface-2 text-ink text-[13px] font-medium flex items-center gap-2 transition-colors shrink-0 shadow-xs"
+            className="h-10 px-3.5 rounded-xl border border-line bg-surface hover:bg-surface-2 text-ink text-[13px] font-medium flex items-center gap-2.5 transition-colors shrink-0 shadow-xs"
           >
             <GoogleLogo className="size-4 shrink-0" />
-            <span className="hidden sm:inline">Sign In</span>
+            <span>Sign In</span>
           </button>
-        )}
-
-        {/* Profile */}
-        <Menu
-          label="Profile"
-          trigger={({ open: isOpen, toggle }) => (
-            <button
-              onClick={toggle}
-              aria-expanded={isOpen}
-              aria-haspopup="dialog"
-              aria-label={`Profile: ${currentUser.name}, ${ROLE_META[currentRole].label}`}
-              className={cn("h-11 md:h-10 pl-1 pr-1 md:pr-2 rounded-full md:rounded-lg flex items-center gap-2.5 hover:bg-surface-2", isOpen && "bg-surface-2")}
-            >
-              <span className="relative size-9 md:size-8 rounded-full bg-surface-3 text-ink grid place-items-center font-mono text-[11px] font-semibold overflow-visible">
-                {currentUser.avatarUrl ? (
-                  <img
-                    src={currentUser.avatarUrl}
-                    alt={currentUser.name}
-                    className="size-full rounded-full object-cover"
-                  />
-                ) : (
-                  initials(currentUser.name)
+        ) : (
+          /* Profile Menu for Authenticated User */
+          <Menu
+            label="Profile"
+            trigger={({ open: isOpen, toggle }) => (
+              <button
+                onClick={toggle}
+                aria-expanded={isOpen}
+                aria-haspopup="dialog"
+                aria-label={`Profile: ${authUser.name}`}
+                className={cn(
+                  "h-11 md:h-10 pl-1 pr-1 md:pr-2 rounded-full md:rounded-lg flex items-center gap-2.5 hover:bg-surface-2",
+                  isOpen && "bg-surface-2"
                 )}
-                <span className={cn("absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-surface", ROLE_META[currentRole].tone)} />
-              </span>
-              <span className="hidden lg:flex flex-col items-start leading-tight">
-                <span className="text-[13px] font-medium text-ink flex items-center gap-1.5">
-                  {currentUser.name}
-                  {isGoogleUser && <GoogleLogo className="size-3 shrink-0" />}
+              >
+                <span className="relative size-9 md:size-8 rounded-full bg-surface-3 text-ink grid place-items-center font-mono text-[11px] font-semibold overflow-visible">
+                  {authUser.avatarUrl ? (
+                    <img
+                      src={authUser.avatarUrl}
+                      alt={authUser.name}
+                      className="size-full rounded-full object-cover"
+                    />
+                  ) : (
+                    initials(authUser.name)
+                  )}
+                  <span
+                    className={cn(
+                      "absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-surface",
+                      ROLE_META[currentRole].tone
+                    )}
+                  />
                 </span>
-                <span className="text-[11.5px] text-ink-subtle">{ROLE_META[currentRole].label}</span>
-              </span>
-              <ChevronDown className="hidden lg:block size-3.5 text-ink-subtle" />
-            </button>
-          )}
-        >
-          {(close) => (
-            <>
-              {authUser ? (
-                <div className="px-2.5 py-2 mb-1.5 rounded-lg bg-surface-2 border border-line/60">
+                <span className="hidden lg:flex flex-col items-start leading-tight">
+                  <span className="text-[13px] font-medium text-ink flex items-center gap-1.5">
+                    {authUser.name}
+                    <GoogleLogo className="size-3 shrink-0" />
+                  </span>
+                  <span className="text-[11.5px] text-ink-subtle">{ROLE_META[currentRole].label}</span>
+                </span>
+                <ChevronDown className="hidden lg:block size-3.5 text-ink-subtle" />
+              </button>
+            )}
+          >
+            {(close) => (
+              <>
+                <div className="px-3 py-2.5 mb-1.5 rounded-xl bg-surface-2 border border-line/60">
                   <div className="flex items-center gap-2.5">
                     {authUser.avatarUrl ? (
-                      <img src={authUser.avatarUrl} alt={authUser.name} className="size-8 rounded-full object-cover" />
+                      <img
+                        src={authUser.avatarUrl}
+                        alt={authUser.name}
+                        className="size-9 rounded-full object-cover ring-1 ring-line"
+                      />
                     ) : (
-                      <span className="size-8 rounded-full bg-accent text-accent-ink grid place-items-center text-xs font-semibold">
+                      <span className="size-9 rounded-full bg-accent text-accent-ink grid place-items-center text-xs font-semibold">
                         {authUser.name[0]}
                       </span>
                     )}
                     <div className="min-w-0 flex-1">
-                      <div className="text-[13px] font-semibold text-ink truncate">{authUser.name}</div>
-                      <div className="text-[11.5px] text-ink-subtle truncate flex items-center gap-1">
+                      <div className="text-[13px] font-semibold text-ink truncate flex items-center gap-1.5">
+                        <span>{authUser.name}</span>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-ok-soft text-ok border border-ok/30">
+                          Verified
+                        </span>
+                      </div>
+                      <div className="text-[11.5px] text-ink-subtle truncate flex items-center gap-1 mt-0.5">
                         <GoogleLogo className="size-3 shrink-0" />
                         <span className="truncate">{authUser.email}</span>
                       </div>
                     </div>
                   </div>
                 </div>
-              ) : (
-                <button
-                  onClick={() => {
-                    close();
-                    void open({ kind: "auth" });
-                  }}
-                  className="w-full mb-1.5 h-10 px-2.5 rounded-lg border border-line bg-surface hover:bg-surface-2 text-ink text-[13px] font-medium flex items-center gap-2.5"
-                >
-                  <GoogleLogo className="size-4 shrink-0" />
-                  <span>Sign in with Google</span>
-                </button>
-              )}
 
-              <div className="px-2.5 pt-1.5 pb-2 nl-eyebrow">View as · demo</div>
-              {profiles.map((user) => {
-                const active = currentUser.id === user.id;
-                return (
+                <div className="space-y-0.5 pt-1">
+                  {/* Panels the mobile bottom bar has no room for */}
+                  {NAV_ITEMS.filter(
+                    (n) =>
+                      (n.id === "help" || n.id === "responder") &&
+                      (!n.roles || n.roles.includes(currentRole))
+                  ).map((n) => (
+                    <button
+                      key={n.id}
+                      onClick={() => void open({ kind: n.id as "help" | "responder" })}
+                      className="md:hidden w-full h-11 px-2.5 rounded-lg flex items-center gap-3 text-[13px] text-ink-muted hover:bg-surface-2 hover:text-ink"
+                    >
+                      <n.icon className="size-4" strokeWidth={1.75} />
+                      {n.label}
+                    </button>
+                  ))}
                   <button
-                    key={user.id}
-                    onClick={() => {
-                      setCurrentUserId(user.id);
-                      close();
-                    }}
-                    aria-label={`View as ${user.name}, ${ROLE_META[user.role].label}`}
-                    className={cn("w-full min-h-11 text-left px-2.5 py-2 rounded-lg flex items-center gap-3", active ? "bg-accent-soft" : "hover:bg-surface-2")}
+                    onClick={() => void open({ kind: "settings" })}
+                    className="w-full h-11 px-2.5 rounded-lg flex items-center gap-3 text-[13px] text-ink-muted hover:bg-surface-2 hover:text-ink"
                   >
-                    <span className="relative size-8 shrink-0 rounded-full bg-surface-3 grid place-items-center font-mono text-[11px] font-semibold text-ink overflow-visible">
-                      {user.avatarUrl ? (
-                        <img src={user.avatarUrl} alt={user.name} className="size-full rounded-full object-cover" />
-                      ) : (
-                        initials(user.name)
-                      )}
-                      <span className={cn("absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-surface", ROLE_META[user.role].tone)} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-[13px] font-medium text-ink flex items-center gap-1.5">
-                        <span className="truncate">{user.name}</span>
-                        {user.isGoogleUser && <GoogleLogo className="size-3 shrink-0" />}
-                      </span>
-                      <span className="block text-[12px] text-ink-subtle truncate">{ROLE_META[user.role].label} · {ROLE_META[user.role].hint}</span>
-                    </span>
-                    {active && <Check className="size-4 text-accent" strokeWidth={2.5} />}
+                    <Settings2 className="size-4" strokeWidth={1.75} />
+                    Settings
                   </button>
-                );
-              })}
-              <div className="mt-1.5 pt-1.5 border-t border-line space-y-0.5">
-                {/* Panels the mobile bottom bar has no room for */}
-                {NAV_ITEMS.filter((n) => (n.id === "help" || n.id === "responder") && (!n.roles || n.roles.includes(currentRole))).map((n) => (
-                  <button
-                    key={n.id}
-                    onClick={() => void open({ kind: n.id as "help" | "responder" })}
-                    className="md:hidden w-full h-11 px-2.5 rounded-lg flex items-center gap-3 text-[13px] text-ink-muted hover:bg-surface-2 hover:text-ink"
-                  >
-                    <n.icon className="size-4" strokeWidth={1.75} />
-                    {n.label}
-                  </button>
-                ))}
-                <button
-                  onClick={() => void open({ kind: "settings" })}
-                  className="w-full h-11 px-2.5 rounded-lg flex items-center gap-3 text-[13px] text-ink-muted hover:bg-surface-2 hover:text-ink"
-                >
-                  <Settings2 className="size-4" strokeWidth={1.75} />
-                  Settings
-                </button>
-                {authUser && (
                   <button
                     onClick={() => {
                       close();
@@ -341,11 +311,11 @@ export function TopBar({ onOpenEmergency }: { onOpenEmergency: () => void }) {
                     <LogOut className="size-4" strokeWidth={1.75} />
                     Sign Out
                   </button>
-                )}
-              </div>
-            </>
-          )}
-        </Menu>
+                </div>
+              </>
+            )}
+          </Menu>
+        )}
       </div>
     </header>
   );

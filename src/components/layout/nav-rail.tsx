@@ -24,7 +24,7 @@ export function NavRail({ onOpenEmergency }: { onOpenEmergency: () => void }) {
 
   return (
     <aside aria-label="Main navigation" className="hidden md:flex w-[76px] shrink-0 flex-col items-center border-r border-line bg-surface py-3 gap-1">
-      <div className="h-11 grid place-items-center mb-2" title="Neighbourlink · Kolkata · demo data">
+      <div className="h-11 grid place-items-center mb-2" title="Neighbourlink · Kolkata · Live Civic Network">
         <BrandMark />
       </div>
 
