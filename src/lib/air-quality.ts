@@ -77,3 +77,67 @@ export const NAQI_TONE: Record<NaqiCategory, string> = {
   "Very Poor": "bg-red-600 text-white",
   Severe: "bg-red-900 text-white",
 };
+
+// ---------------------------------------------------------------------------
+// US EPA AQI, used outside India.
+
+export type UsAqiCategory =
+  | "Good"
+  | "Moderate"
+  | "Unhealthy for Sensitive Groups"
+  | "Unhealthy"
+  | "Very Unhealthy"
+  | "Hazardous";
+
+export function usAqiCategory(aqi: number): UsAqiCategory {
+  if (aqi <= 50) return "Good";
+  if (aqi <= 100) return "Moderate";
+  if (aqi <= 150) return "Unhealthy for Sensitive Groups";
+  if (aqi <= 200) return "Unhealthy";
+  if (aqi <= 300) return "Very Unhealthy";
+  return "Hazardous";
+}
+
+const US_ADVICE: Record<UsAqiCategory, string> = {
+  Good: "Air quality is satisfactory.",
+  Moderate: "Unusually sensitive people should limit prolonged exertion outdoors.",
+  "Unhealthy for Sensitive Groups": "Children, older adults and people with lung or heart disease should reduce outdoor exertion.",
+  Unhealthy: "Everyone should reduce prolonged exertion outdoors.",
+  "Very Unhealthy": "Everyone should avoid prolonged exertion outdoors.",
+  Hazardous: "Health warning of emergency conditions. Stay indoors.",
+};
+
+const US_TONE: Record<UsAqiCategory, string> = {
+  Good: "bg-emerald-600 text-white",
+  Moderate: "bg-yellow-400 text-black",
+  "Unhealthy for Sensitive Groups": "bg-orange-500 text-white",
+  Unhealthy: "bg-red-600 text-white",
+  "Very Unhealthy": "bg-purple-700 text-white",
+  Hazardous: "bg-red-950 text-white",
+};
+
+const US_SMOG: Record<UsAqiCategory, number> = {
+  Good: 0,
+  Moderate: 0,
+  "Unhealthy for Sensitive Groups": 0.15,
+  Unhealthy: 0.35,
+  "Very Unhealthy": 0.6,
+  Hazardous: 0.85,
+};
+
+export type AqiScale = "IN_NAQI" | "US_AQI";
+
+export const AQI_SCALE_LABEL: Record<AqiScale, string> = {
+  IN_NAQI: "India AQI (CPCB method)",
+  US_AQI: "US AQI (EPA)",
+};
+
+/** Colour, advice and smog for a reading on either scale. */
+export function aqiPresentation(scale: AqiScale, category: string) {
+  if (scale === "IN_NAQI") {
+    const c = category as NaqiCategory;
+    return { tone: NAQI_TONE[c], advice: NAQI_ADVICE[c], smog: smogLevel(c) };
+  }
+  const c = category as UsAqiCategory;
+  return { tone: US_TONE[c], advice: US_ADVICE[c], smog: US_SMOG[c] };
+}

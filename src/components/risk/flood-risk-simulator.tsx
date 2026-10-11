@@ -7,95 +7,98 @@ import { RISK_TONE } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import type { RiskEvaluationOutput } from "@/services/risk-service";
 
+const SCENARIOS: Record<
+  string,
+  {
+    label: string;
+    inputs: {
+      rainfallRecentMm?: number | null;
+      rainfallForecastMm?: number | null;
+      waterLevelMeters?: number | null;
+      historicalSusceptibility?: boolean;
+    };
+  }
+> = {
+  NORMAL: {
+    label: "Dry weather",
+    inputs: {
+      rainfallRecentMm: 8.5,
+      rainfallForecastMm: 5.0,
+      waterLevelMeters: 0.6,
+      historicalSusceptibility: false,
+    },
+  },
+  ELEVATED: {
+    label: "Monsoon shower",
+    inputs: {
+      rainfallRecentMm: 62.4,
+      rainfallForecastMm: 28.0,
+      waterLevelMeters: 1.45,
+      historicalSusceptibility: true,
+    },
+  },
+  HIGH: {
+    label: "Tide surge + cloudburst",
+    inputs: {
+      rainfallRecentMm: 74.0,
+      rainfallForecastMm: 35.5,
+      waterLevelMeters: 2.1,
+      historicalSusceptibility: true,
+    },
+  },
+  MISSING_DATA: {
+    label: "Missing forecast",
+    inputs: {
+      rainfallRecentMm: 45.0,
+      rainfallForecastMm: null,
+      waterLevelMeters: 1.2,
+    },
+  },
+  STALE_DATA: {
+    label: "Stale feed",
+    inputs: {
+      rainfallRecentMm: 55.0,
+      rainfallForecastMm: 30.0,
+      waterLevelMeters: 1.8,
+    },
+  },
+};
+
+const INITIAL_EVALUATION: RiskEvaluationOutput = {
+  riskLevel: "ELEVATED",
+  modelName: "Experimental Rule-Based Flood Engine v1.0",
+  disclaimer: "Experimental rule-based flood-risk indicator — not an official warning.",
+  horizonHours: 24,
+  isStale: false,
+  evaluatedAt: new Date(1791700000000),
+  explanation:
+    "Elevated waterlogging risk: Moderate antecedent rainfall or significant forecast precipitation over vulnerable low-lying terrain. Sub-arterial roads may experience localized pooling during peak runoff.",
+  contributingFactors: [
+    "Recent 24h Rainfall: 62.4mm",
+    "Forecast 24h Rainfall: 28mm",
+    "Canal / River Gauge: 1.45m",
+    "Historical Basin Susceptibility: Low-lying drainage catchment",
+  ],
+};
+
 export function FloodRiskSimulator() {
   const [selectedScenario, setSelectedScenario] = useState<string>("ELEVATED");
-  const [evaluation, setEvaluation] = useState<RiskEvaluationOutput | null>({
-    riskLevel: "ELEVATED",
-    modelName: "Experimental Rule-Based Flood Engine v1.0",
-    disclaimer:
-      "Experimental rule-based flood-risk indicator — not an official warning.",
-    horizonHours: 24,
-    isStale: false,
-    evaluatedAt: new Date(),
-    explanation:
-      "Elevated waterlogging risk: Moderate antecedent rainfall or significant forecast precipitation over vulnerable low-lying terrain. Sub-arterial roads may experience localized pooling during peak runoff.",
-    contributingFactors: [
-      "Recent 24h Rainfall: 62.4mm",
-      "Forecast 24h Rainfall: 28mm",
-      "Canal / River Gauge: 1.45m",
-      "Historical Basin Susceptibility: Low-lying drainage catchment",
-    ],
-  });
+  const [evaluation, setEvaluation] = useState<RiskEvaluationOutput | null>(INITIAL_EVALUATION);
   const [isLoading, setIsLoading] = useState(false);
-
-  const scenarios: Record<
-    string,
-    {
-      label: string;
-      inputs: {
-        rainfallRecentMm?: number | null;
-        rainfallForecastMm?: number | null;
-        waterLevelMeters?: number | null;
-        historicalSusceptibility?: boolean;
-        evaluatedAt?: string;
-      };
-    }
-  > = {
-    NORMAL: {
-      label: "Dry weather",
-      inputs: {
-        rainfallRecentMm: 8.5,
-        rainfallForecastMm: 5.0,
-        waterLevelMeters: 0.6,
-        historicalSusceptibility: false,
-      },
-    },
-    ELEVATED: {
-      label: "Monsoon shower",
-      inputs: {
-        rainfallRecentMm: 62.4,
-        rainfallForecastMm: 28.0,
-        waterLevelMeters: 1.45,
-        historicalSusceptibility: true,
-      },
-    },
-    HIGH: {
-      label: "Tide surge + cloudburst",
-      inputs: {
-        rainfallRecentMm: 74.0,
-        rainfallForecastMm: 35.5,
-        waterLevelMeters: 2.1,
-        historicalSusceptibility: true,
-      },
-    },
-    MISSING_DATA: {
-      label: "Missing forecast",
-      inputs: {
-        rainfallRecentMm: 45.0,
-        rainfallForecastMm: null, // Missing forecast
-        waterLevelMeters: 1.2,
-      },
-    },
-    STALE_DATA: {
-      label: "Stale feed",
-      inputs: {
-        rainfallRecentMm: 55.0,
-        rainfallForecastMm: 30.0,
-        waterLevelMeters: 1.8,
-        evaluatedAt: new Date(Date.now() - 36 * 3600 * 1000).toISOString(),
-      },
-    },
-  };
 
   const handleRunScenario = async (key: string) => {
     setSelectedScenario(key);
     setIsLoading(true);
 
     try {
+      const inputs = {
+        ...SCENARIOS[key].inputs,
+        ...(key === "STALE_DATA" ? { evaluatedAt: new Date(Date.now() - 36 * 3600 * 1000).toISOString() } : {}),
+      };
       const res = await fetch("/api/risk/evaluate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(scenarios[key].inputs),
+        body: JSON.stringify(inputs),
       });
       const data = await res.json();
       if (data.success) {
@@ -122,7 +125,7 @@ export function FloodRiskSimulator() {
           data is handled.
         </p>
         <div className="mt-3 flex gap-1.5 overflow-x-auto -mx-1 px-1 pb-0.5">
-          {Object.entries(scenarios).map(([key, s]) => {
+          {Object.entries(SCENARIOS).map(([key, s]) => {
             const active = selectedScenario === key;
             return (
               <button

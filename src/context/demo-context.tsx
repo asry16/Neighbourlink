@@ -84,8 +84,19 @@ export const INDIA_OVERVIEW: Locality = {
   isOverview: true,
 };
 
+export const WORLD_OVERVIEW: Locality = {
+  id: "world",
+  name: "World",
+  description: "Major earthquakes, cyclones, floods and volcanoes worldwide",
+  lng: 40,
+  lat: 20,
+  zoom: 1.4,
+  isOverview: true,
+};
+
 export const DEMO_LOCALITIES: Locality[] = [
   INDIA_OVERVIEW,
+  WORLD_OVERVIEW,
   {
     id: "all-kolkata",
     name: "Kolkata Metro (All Sectors)",

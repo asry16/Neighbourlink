@@ -84,6 +84,7 @@ export function GeospatialMap() {
     layerFilters,
     toggleLayer,
     currentRole,
+    currentUser,
     selectedIncidentId,
     setSelectedIncidentId,
     is3D,
@@ -119,7 +120,18 @@ export function GeospatialMap() {
   const openDetailsRef = useRef<(id: string) => void>(() => {});
 
   const [mapLoaded, setMapLoaded] = useState(false);
-  const [webGlSupported, setWebGlSupported] = useState(true);
+  const [webGlSupported, setWebGlSupported] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      const canvas = document.createElement("canvas");
+      return !!(
+        window.WebGLRenderingContext &&
+        (canvas.getContext("webgl") || canvas.getContext("experimental-webgl"))
+      );
+    } catch {
+      return false;
+    }
+  });
   const [bearing, setBearing] = useState(0);
   const [popover, setPopover] = useState<"type" | "layers" | null>(null);
   const [capabilities, setCapabilities] = useState<MapCapabilities>({ buildings: false, terrain: false });
@@ -143,7 +155,7 @@ export function GeospatialMap() {
         });
       }
       if (layerFilters.sosAreas) {
-        sosRequests.forEach((s: any) => {
+        sosRequests.forEach((s) => {
           const lng = s.longitude || s.exactLongitude || s.fuzzyLongitude;
           const lat = s.latitude || s.exactLatitude || s.fuzzyLatitude;
           if (lng && lat && bounds.contains([lng, lat])) count++;
@@ -159,11 +171,21 @@ export function GeospatialMap() {
           if (bounds.contains([r.centerLng, r.centerLat])) count++;
         });
       }
+      if (layerFilters.helpCentres) {
+        INITIAL_HELP_CENTRES.forEach((c) => {
+          if (bounds.contains([c.longitude, c.latitude])) count++;
+        });
+      }
+      if (layerFilters.liveFeeds && liveHazards) {
+        liveHazards.hazards.forEach((h) => {
+          if (bounds.contains([h.longitude, h.latitude])) count++;
+        });
+      }
       setVisibleIncidentCount(count);
     } catch {
       // ignore
     }
-  }, [layerFilters, incidents, sosRequests]);
+  }, [layerFilters, incidents, sosRequests, liveHazards]);
 
   // Fit map viewport to encompass all active incidents, hazards, and SOS alerts
   const fitToActiveIncidents = useCallback(() => {
@@ -175,7 +197,7 @@ export function GeospatialMap() {
       incidents.forEach((i) => coords.push([i.longitude, i.latitude]));
     }
     if (layerFilters.sosAreas) {
-      sosRequests.forEach((s: any) => {
+      sosRequests.forEach((s) => {
         const lng = s.longitude || s.exactLongitude || s.fuzzyLongitude;
         const lat = s.latitude || s.exactLatitude || s.fuzzyLatitude;
         if (lng && lat) coords.push([lng, lat]);
@@ -190,6 +212,9 @@ export function GeospatialMap() {
     if (layerFilters.helpCentres) {
       INITIAL_HELP_CENTRES.forEach((c) => coords.push([c.longitude, c.latitude]));
     }
+    if (layerFilters.liveFeeds && liveHazards?.hazards?.length) {
+      liveHazards.hazards.forEach((h) => coords.push([h.longitude, h.latitude]));
+    }
 
     if (coords.length === 0) {
       INITIAL_INCIDENTS.forEach((i) => coords.push([i.longitude, i.latitude]));
@@ -203,21 +228,7 @@ export function GeospatialMap() {
       maxZoom: 15,
       duration: 1400,
     });
-  }, [layerFilters, incidents, sosRequests]);
-
-  // Check WebGL support
-  useEffect(() => {
-    try {
-      const canvas = document.createElement("canvas");
-      const supported = !!(
-        window.WebGLRenderingContext &&
-        (canvas.getContext("webgl") || canvas.getContext("experimental-webgl"))
-      );
-      setWebGlSupported(supported);
-    } catch {
-      setWebGlSupported(false);
-    }
-  }, []);
+  }, [layerFilters, incidents, sosRequests, liveHazards]);
 
   // (Re)apply buildings / terrain / label visibility for the current options.
   // Called from the persistent `style.load` handler and when options change.
@@ -1012,7 +1023,7 @@ export function GeospatialMap() {
           </div>
         )}
 
-        {is3D && mapLoaded && !capabilities.buildings && (
+        {is3D && mapLoaded && !capabilities.buildings && !walk && (
           <div className={`${chip} px-3 text-ink-muted`} role="status">
             3D buildings aren&apos;t available on this basemap
           </div>
@@ -1132,6 +1143,7 @@ export function GeospatialMap() {
         onClose={() => setChoosingWalkStart(false)}
         onStart={beginWalk}
         mapCentre={mapCentre}
+        defaultName={currentUser.name}
       />
 
       {walk && (
@@ -1145,7 +1157,9 @@ export function GeospatialMap() {
       )}
 
       {/* Compact legend (desktop); on mobile the Map panel doubles as legend */}
-      <div className="absolute bottom-4 left-4 z-20 hidden lg:flex items-center gap-4 nl-glass rounded-[10px] h-9 px-3.5">
+      <div
+        className={`absolute bottom-4 left-4 z-20 hidden items-center gap-4 nl-glass rounded-[10px] h-9 px-3.5 ${walk ? "" : "lg:flex"}`}
+      >
         {MAP_LAYERS.filter((l) => layerFilters[l.key]).map((l) => (
           <span key={l.key} className="flex items-center gap-1.5 text-[12px] text-ink-muted">
             <span className={`size-2 rounded-full ${l.dot}`} />

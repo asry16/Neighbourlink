@@ -1,4 +1,5 @@
-import { indiaNaqi } from "@/lib/air-quality";
+import { indiaNaqi, usAqiCategory } from "@/lib/air-quality";
+import { isInIndia } from "@/lib/geo-india";
 import type { AirQualityReading, LiveFloodRisk, LocalConditions } from "@/lib/live-types";
 import { RiskService } from "./risk-service";
 
@@ -18,17 +19,25 @@ const mean = (xs: (number | null)[]) => {
   return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
 };
 
-/** CAMS model PM2.5 / PM10 via Open-Meteo, scored on India's NAQI. */
+/** CAMS model PM2.5 / PM10 via Open-Meteo: India's NAQI in India, US AQI elsewhere. */
 async function airQuality(lat: number, lng: number): Promise<AirQualityReading> {
   const json = await fetchJson(
     `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lng}` +
-      "&current=pm2_5,pm10&hourly=pm2_5,pm10&past_hours=24&forecast_hours=1&timezone=auto"
+      "&current=pm2_5,pm10,us_aqi&hourly=pm2_5,pm10&past_hours=24&forecast_hours=1&timezone=auto"
   );
   const pm25Avg = mean(json.hourly.pm2_5.slice(0, 24)) ?? json.current.pm2_5;
   const pm10Avg = mean(json.hourly.pm10.slice(0, 24)) ?? json.current.pm10;
-  const naqi = indiaNaqi(pm25Avg, pm10Avg);
+  const india = isInIndia(lat, lng);
+  const index = india
+    ? { scale: "IN_NAQI" as const, ...indiaNaqi(pm25Avg, pm10Avg) }
+    : {
+        scale: "US_AQI" as const,
+        aqi: Math.round(json.current.us_aqi),
+        category: usAqiCategory(json.current.us_aqi),
+        dominant: null,
+      };
   return {
-    ...naqi,
+    ...index,
     pm25: json.current.pm2_5,
     pm10: json.current.pm10,
     pm25Avg24h: Math.round(pm25Avg),

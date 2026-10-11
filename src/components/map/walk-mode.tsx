@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type * as maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import {
   ArrowBigDown,
   ArrowBigLeft,
@@ -19,13 +19,16 @@ import {
   Moon,
   RefreshCw,
   Sun,
+  Users,
   X,
   type LucideIcon,
 } from "lucide-react";
-import { createWalker3D, WALKER_LAYER_ID, type Walker3D } from "./walker-3d";
+import { createCrowd3D, WALKER_LAYER_ID, type Crowd3D, type WalkerPose } from "./walker-3d";
+import { usePresence } from "./use-presence";
+import { EMOTE_LABEL, EMOTE_MS, type Emote, type Walker } from "@/lib/presence-types";
 import { WeatherOverlay } from "./weather-overlay";
 import type { WalkStart } from "./walk-start-dialog";
-import { NAQI_TONE, smogLevel } from "@/lib/air-quality";
+import { aqiPresentation, AQI_SCALE_LABEL, smogLevel } from "@/lib/air-quality";
 import type { LocalConditions } from "@/lib/live-types";
 import {
   compassPoint,
@@ -118,6 +121,44 @@ interface Nearby {
   direction: string;
 }
 
+interface HelpCall {
+  walker: Walker;
+  distance: number;
+  direction: string;
+  bearing: number;
+}
+
+/** Walkers within this distance count as "here" and can see your SOS. */
+const NEARBY_WALKERS_M = 5000;
+const HELP_RADIUS_M = 3000;
+const SELF_ID = "self";
+const EMOTE_KEYS: Record<string, Emote> = { Digit1: "wave", Digit2: "thanks", Digit3: "help" };
+
+/** Floating name tag (and emote bubble) above a character. */
+function nameTag(name: string, color: string, isSelf: boolean) {
+  const el = document.createElement("div");
+  el.className = "pointer-events-none flex flex-col items-center gap-1";
+  el.innerHTML = `
+    <div data-emote class="hidden px-2.5 py-1 rounded-full bg-white text-[13px] font-semibold text-neutral-900 shadow-lg whitespace-nowrap"></div>
+    <div class="flex items-center gap-1.5 h-6 pl-1.5 pr-2 rounded-full bg-black/65 text-white text-[11.5px] font-medium shadow whitespace-nowrap backdrop-blur-sm">
+      <span class="size-2.5 rounded-full" style="background:${color}"></span><span data-name></span>
+    </div>`;
+  (el.querySelector("[data-name]") as HTMLElement).textContent = isSelf ? `${name} (you)` : name;
+  return el;
+}
+
+function setTagEmote(el: HTMLElement, emote: Emote | null) {
+  const bubble = el.querySelector<HTMLElement>("[data-emote]");
+  if (!bubble) return;
+  const next = emote ? `${EMOTE_LABEL[emote].icon} ${EMOTE_LABEL[emote].text}` : "";
+  if (bubble.dataset.value === next) return;
+  bubble.dataset.value = next;
+  bubble.textContent = next;
+  bubble.classList.toggle("hidden", !emote);
+  bubble.classList.toggle("!bg-red-600", emote === "help");
+  bubble.classList.toggle("!text-white", emote === "help");
+}
+
 /**
  * Third-person walking with a 3D character and live local weather. The
  * character stays centred while the camera follows behind; up/down walk,
@@ -141,7 +182,21 @@ export function WalkMode({
   const posRef = useRef({ lat: start.lat, lng: start.lng });
   const headingRef = useRef(map.getBearing());
   const poisRef = useRef(pois);
-  const walkerRef = useRef<Walker3D | null>(null);
+  const crowdRef = useRef<Crowd3D | null>(null);
+  const gaitRef = useRef(0);
+  const getPose = useCallback(
+    (): WalkerPose => ({ ...posRef.current, heading: headingRef.current, gait: gaitRef.current }),
+    []
+  );
+  const presence = usePresence({ name: start.name, place: start.label, getPose });
+  const presenceRef = useRef(presence);
+  useEffect(() => {
+    presenceRef.current = presence;
+  }, [presence]);
+  const [helpCall, setHelpCall] = useState<HelpCall | null>(null);
+  /** Throttled copy of the position for rendering distances. */
+  const [myPos, setMyPos] = useState({ lat: start.lat, lng: start.lng });
+  const [peopleOpen, setPeopleOpen] = useState(false);
   const [moving, setMoving] = useState(false);
   const [walkedM, setWalkedM] = useState(0);
   const [nearby, setNearby] = useState<Nearby | null>(null);
@@ -210,7 +265,7 @@ export function WalkMode({
   const sceneRef = useRef(scene);
   const aq = conditions?.airQuality ?? null;
   // The smog preview simulates a Severe-AQI day (labelled as a preview).
-  const smog = preview === "smog" ? smogLevel("Severe") : aq ? smogLevel(aq.category) : 0;
+  const smog = preview === "smog" ? smogLevel("Severe") : aq ? aqiPresentation(aq.scale, aq.category).smog : 0;
   const masked = smog >= 0.35;
   const maskedRef = useRef(masked);
   const flood = conditions?.floodRisk ?? null;
@@ -223,7 +278,7 @@ export function WalkMode({
       ? Math.max(0.3, 1 - scene.cloudCover * 0.4 - (scene.precip === "none" ? 0 : 0.2) - scene.fog * 0.2)
       : 0.12;
     maskedRef.current = masked;
-    walkerRef.current?.setWeather({ precip: scene.precip, daylight: daylight * (1 - smog * 0.3), mask: masked });
+    crowdRef.current?.setWeather({ precip: scene.precip, daylight: daylight * (1 - smog * 0.3), mask: masked });
     map.setSky(skyFor(scene));
   }, [scene, map, smog, masked]);
 
@@ -232,17 +287,34 @@ export function WalkMode({
     let cancelled = false;
     const originalSky = map.getSky();
     const addLayer = () => {
-      const w = walkerRef.current;
+      const w = crowdRef.current;
       if (w && !map.getLayer(WALKER_LAYER_ID)) map.addLayer(w.layer);
       if (sceneRef.current) map.setSky(skyFor(sceneRef.current));
     };
 
-    void createWalker3D(map, { ...start, heading: headingRef.current, gait: 0 }).then((w) => {
+    // Name tags for you and everyone else; positions follow the 3D figures.
+    const tags = new Map<string, { marker: maplibregl.Marker; el: HTMLElement }>();
+    const tagFor = (id: string, name: string, color: string, isSelf: boolean) => {
+      let t = tags.get(id);
+      if (!t) {
+        const el = nameTag(name, color, isSelf);
+        const marker = new maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, -96] })
+          .setLngLat([posRef.current.lng, posRef.current.lat])
+          .addTo(map);
+        t = { marker, el };
+        tags.set(id, t);
+      }
+      return t;
+    };
+    // Others glide toward their latest reported pose between updates.
+    const shown = new Map<string, WalkerPose>();
+
+    void createCrowd3D(map).then((w) => {
       if (cancelled) {
         w.dispose();
         return;
       }
-      walkerRef.current = w;
+      crowdRef.current = w;
       const sc = sceneRef.current;
       if (sc)
         w.setWeather({
@@ -277,6 +349,9 @@ export function WalkMode({
     let walked = 0;
     let lastReport = 0;
     let lastNearbyKey = "";
+    let lastHelpKey = "";
+    let lastMineSeq = 0;
+    let mineSince = -Infinity;
 
     const tick = (now: number) => {
       const dt = Math.min((now - last) / 1000, 0.1);
@@ -302,7 +377,48 @@ export function WalkMode({
 
       // Turning on the spot shuffles the feet; running swings harder.
       const gait = step !== 0 ? step * (running.current ? 2 : 1) : turn !== 0 ? 0.5 : 0;
-      walkerRef.current?.setPose({ ...posRef.current, heading: headingRef.current, gait });
+      gaitRef.current = gait;
+      const p = presenceRef.current;
+      const crowd = crowdRef.current;
+      crowd?.upsert(SELF_ID, { ...posRef.current, heading: headingRef.current, gait }, p.myColor);
+      const selfTag = tagFor(SELF_ID, start.name, p.myColor, true);
+      selfTag.marker.setLngLat([posRef.current.lng, posRef.current.lat]);
+      const mine = p.myEmote;
+      setTagEmote(selfTag.el, mine && performance.now() - mineSince < EMOTE_MS ? mine.emote : null);
+      if (mine && mine.seq !== lastMineSeq) {
+        lastMineSeq = mine.seq;
+        mineSince = performance.now();
+      }
+
+      // Other walkers: smooth toward the latest pose, drop those who left.
+      const k = 1 - Math.exp(-dt * 8);
+      const others = p.othersRef.current;
+      for (const [id, w] of others) {
+        const prev = shown.get(id);
+        const target: WalkerPose = { lat: w.lat, lng: w.lng, heading: w.heading, gait: w.gait };
+        // Snap if they jumped far (new city) instead of sliding across the map.
+        const pose =
+          !prev || distanceM(prev.lat, prev.lng, w.lat, w.lng) > 2000
+            ? target
+            : {
+                lat: prev.lat + (w.lat - prev.lat) * k,
+                lng: prev.lng + (w.lng - prev.lng) * k,
+                heading: prev.heading + ((((w.heading - prev.heading + 540) % 360) - 180) * k),
+                gait: w.gait,
+              };
+        shown.set(id, pose);
+        crowd?.upsert(id, pose, w.color);
+        const tag = tagFor(id, w.name, w.color, false);
+        tag.marker.setLngLat([pose.lng, pose.lat]);
+        setTagEmote(tag.el, p.emoteActive(w) ? w.emote : null);
+      }
+      for (const id of [...shown.keys()]) {
+        if (others.has(id)) continue;
+        shown.delete(id);
+        crowd?.remove(id);
+        tags.get(id)?.marker.remove();
+        tags.delete(id);
+      }
 
       if (isMoving !== wasMoving) {
         wasMoving = isMoving;
@@ -314,6 +430,7 @@ export function WalkMode({
         lastReport = now;
         setWalkedM(Math.round(walked));
         const { lat, lng } = posRef.current;
+        setMyPos((prev) => (prev.lat === lat && prev.lng === lng ? prev : { lat, lng }));
 
         if (weatherCell(posRef.current) !== weatherCellRef.current) void fetchWeatherRef.current(posRef.current);
 
@@ -333,6 +450,22 @@ export function WalkMode({
           lastNearbyKey = key;
           setNearby(best);
         }
+
+        // Someone close by asking for help takes priority.
+        let help: HelpCall | null = null;
+        for (const w of p.othersRef.current.values()) {
+          if (w.emote !== "help" || !p.emoteActive(w)) continue;
+          const d = distanceM(lat, lng, w.lat, w.lng);
+          if (d <= HELP_RADIUS_M && (!help || d < help.distance)) {
+            const b = bearingDeg(lat, lng, w.lat, w.lng);
+            help = { walker: w, distance: d, bearing: b, direction: relativeDirection(headingRef.current, b) };
+          }
+        }
+        const helpKey = help ? `${help.walker.id}|${Math.round(help.distance / 20)}|${help.direction}` : "";
+        if (helpKey !== lastHelpKey) {
+          lastHelpKey = helpKey;
+          setHelpCall(help);
+        }
       }
 
       frame = requestAnimationFrame(tick);
@@ -344,8 +477,9 @@ export function WalkMode({
       cancelAnimationFrame(frame);
       map.off("style.load", addLayer);
       if (map.getLayer(WALKER_LAYER_ID)) map.removeLayer(WALKER_LAYER_ID);
-      walkerRef.current?.dispose();
-      walkerRef.current = null;
+      crowdRef.current?.dispose();
+      crowdRef.current = null;
+      tags.forEach((t) => t.marker.remove());
       map.keyboard.enable();
       map.dragPan.enable();
       map.setSky(originalSky ?? {});
@@ -365,6 +499,11 @@ export function WalkMode({
       running.current = e.shiftKey;
       if (e.key === "Escape") {
         onExit();
+        return;
+      }
+      const emote = EMOTE_KEYS[e.code];
+      if (emote && !e.repeat) {
+        presenceRef.current.emote(emote);
         return;
       }
       const dir = KEY_DIR[e.code];
@@ -422,6 +561,26 @@ export function WalkMode({
     </button>
   );
 
+  // Who's around, nearest first (refreshed with the throttled presence list).
+  const here = presence.others
+    .map((w) => ({ w, d: distanceM(myPos.lat, myPos.lng, w.lat, w.lng) }))
+    .sort((a, b) => a.d - b.d);
+  const nearbyCount = here.filter((x) => x.d <= NEARBY_WALKERS_M).length;
+
+  const emoteButton = (e: Emote, key: string) => (
+    <button
+      type="button"
+      onClick={() => presence.emote(e)}
+      aria-label={`${EMOTE_LABEL[e].text} (key ${key})`}
+      title={`${EMOTE_LABEL[e].text} · key ${key}`}
+      className={`size-12 md:size-11 grid place-items-center rounded-xl text-[20px] transition-colors ${
+        e === "help" ? "hover:bg-red-500/15" : "hover:bg-surface-2"
+      }`}
+    >
+      {EMOTE_LABEL[e].icon}
+    </button>
+  );
+
   return (
     <>
       {scene && <WeatherOverlay scene={scene} getBearing={getBearing} smog={smog} />}
@@ -437,6 +596,17 @@ export function WalkMode({
             {walkedM >= 1000 ? `${(walkedM / 1000).toFixed(2)} km` : `${walkedM} m`}
           </span>
           <button
+            onClick={() => setPeopleOpen((o) => !o)}
+            aria-expanded={peopleOpen}
+            aria-label={`${nearbyCount} other ${nearbyCount === 1 ? "walker" : "walkers"} nearby, ${presence.others.length} online`}
+            title={presence.connected ? "People walking with you" : "Reconnecting…"}
+            className="h-7 px-2 rounded-full text-ink-muted hover:bg-surface-2 hover:text-ink flex items-center gap-1.5"
+          >
+            <span className={`size-1.5 rounded-full ${presence.connected ? "bg-ok" : "bg-warn"}`} />
+            <Users className="size-3.5" />
+            <span className="font-mono text-[11.5px]">{nearbyCount}</span>
+          </button>
+          <button
             onClick={onExit}
             aria-label="Exit walk mode"
             className="h-7 px-2.5 rounded-full text-ink-muted hover:bg-surface-2 hover:text-ink flex items-center gap-1"
@@ -444,6 +614,55 @@ export function WalkMode({
             <X className="size-3.5" /> Exit
           </button>
         </div>
+
+        {helpCall && (
+          <div
+            role="alert"
+            className="w-full rounded-xl bg-red-600 text-white px-3 py-2.5 flex items-center gap-3 pointer-events-auto animate-rise shadow-lg"
+          >
+            <span className="text-[20px]" aria-hidden>🆘</span>
+            <div className="min-w-0 flex-1 leading-tight">
+              <div className="text-[13.5px] font-semibold truncate">{helpCall.walker.name} needs help</div>
+              <div className="text-[12px] text-white/85">
+                {Math.round(helpCall.distance)} m {helpCall.direction}. Call 112 if it&apos;s an emergency.
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                headingRef.current = helpCall.bearing;
+                map.easeTo({ bearing: helpCall.bearing, duration: 500 });
+              }}
+              className="h-8 px-3 rounded-lg bg-white text-red-700 text-[12px] font-semibold shrink-0"
+            >
+              Turn toward them
+            </button>
+          </div>
+        )}
+
+        {peopleOpen && (
+          <div className="nl-glass rounded-xl w-full p-2 pointer-events-auto animate-rise">
+            <div className="px-1.5 pb-1.5 flex items-center justify-between text-[11.5px] text-ink-subtle">
+              <span>
+                {presence.others.length === 0
+                  ? "No one else is walking right now"
+                  : `${presence.others.length} online · ${nearbyCount} within ${NEARBY_WALKERS_M / 1000} km`}
+              </span>
+              <span>Share this page to invite people</span>
+            </div>
+            <ul className="max-h-44 overflow-y-auto flex flex-col gap-0.5">
+              {here.slice(0, 20).map(({ w, d }) => (
+                <li key={w.id} className="flex items-center gap-2.5 px-1.5 py-1 rounded-lg text-[12.5px]">
+                  <span className="size-2.5 rounded-full shrink-0" style={{ background: w.color }} />
+                  <span className="font-medium text-ink truncate">{w.name}</span>
+                  {presence.emoteActive(w) && w.emote && <span aria-label={EMOTE_LABEL[w.emote].text}>{EMOTE_LABEL[w.emote].icon}</span>}
+                  <span className="ml-auto shrink-0 text-ink-subtle">
+                    {d < 1000 ? `${Math.round(d)} m` : d < 100_000 ? `${(d / 1000).toFixed(1)} km` : w.place || "far away"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div
           className="nl-glass rounded-xl w-full px-3 py-2 flex items-center gap-3 pointer-events-auto animate-rise"
@@ -488,8 +707,8 @@ export function WalkMode({
                   <div className="flex flex-wrap items-center gap-1.5 text-[11.5px]">
                     {aq && (
                       <span
-                        className={`px-1.5 py-0.5 rounded font-semibold ${NAQI_TONE[aq.category]}`}
-                        title={`India AQI ${aq.aqi} (${aq.category}), driven by ${aq.dominant}. CPCB method from CAMS model data.`}
+                        className={`px-1.5 py-0.5 rounded font-semibold ${aqiPresentation(aq.scale, aq.category).tone}`}
+                        title={`${AQI_SCALE_LABEL[aq.scale]} ${aq.aqi}: ${aq.category}. From CAMS model data.`}
                       >
                         AQI {aq.aqi} · {aq.category}
                       </span>
@@ -579,6 +798,12 @@ export function WalkMode({
 
       {/* D-pad (bottom-centre) */}
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 animate-rise">
+        <div className="flex items-end gap-2">
+        <div role="group" aria-label="Emotes" className="nl-glass rounded-2xl p-1.5 flex flex-col gap-1 select-none">
+          {emoteButton("wave", "1")}
+          {emoteButton("thanks", "2")}
+          {emoteButton("help", "3")}
+        </div>
         <div
           role="group"
           aria-label="Walk controls"
@@ -589,8 +814,9 @@ export function WalkMode({
           {padButton("back", "Walk backward", ArrowBigDown, "col-start-2 row-start-2")}
           {padButton("right", "Turn right", ArrowBigRight, "col-start-3 row-start-2")}
         </div>
+        </div>
         <p className="hidden md:block nl-glass rounded-full px-3 py-1 text-[11.5px] text-ink-muted">
-          Arrow keys or WASD · hold Shift to run · Esc to exit
+          Arrow keys or WASD · Shift to run · 1 👋 2 🙏 3 🆘 · Esc to exit
         </p>
       </div>
     </>
