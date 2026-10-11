@@ -26,12 +26,15 @@ Neighbourlink connects citizens, community observers, and registered disaster re
 ### 2. Installation
 ```bash
 git clone <repo-url>
-cd neighbourhood
+cd Neighbourlink
 npm install
 ```
 
 ### 3. Database Setup & Deterministic Seeding
 ```bash
+# Create your local env file (sets DATABASE_URL for SQLite)
+cp .env.example .env
+
 # Push Prisma schema to local SQLite database (dev.db)
 npx prisma db push
 

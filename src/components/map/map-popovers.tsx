@@ -143,7 +143,7 @@ function previewUrl(type: "street" | "satellite", dark: boolean, lat: number, ln
   }
   return type === "satellite"
     ? `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`
-    : `https://a.basemaps.cartocdn.com/${dark ? "dark_all" : "light_all"}/${z}/${x}/${y}.png`;
+    : `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_${dark ? "Dark" : "Light"}_Gray_Base/MapServer/tile/${z}/${y}/${x}`;
 }
 
 export function MapTypePopover({

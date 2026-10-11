@@ -2,7 +2,7 @@
 
 import React, { useCallback, useRef, useState } from "react";
 import { PhoneCall, Bell, ChevronDown, Check, Settings2 } from "lucide-react";
-import { useDemo, DEMO_USERS, type Role } from "@/context/demo-context";
+import { useDemo, DEMO_PROFILES, type Role } from "@/context/demo-context";
 import { useOverlay } from "@/context/overlay-context";
 import { NAV_ITEMS } from "@/lib/navigation";
 import { DEFAULT_NOTIFY_PREFS, NOTIFY_PREFS_KEY, useLocalPref, type NotificationPrefs } from "@/lib/local-prefs";
@@ -79,7 +79,7 @@ export function TopBar({ onOpenEmergency }: { onOpenEmergency: () => void }) {
   const {
     currentRole,
     currentUser,
-    setRole,
+    setCurrentUserId,
     notifications,
     markNotificationRead,
     markAllNotificationsRead,
@@ -220,24 +220,25 @@ export function TopBar({ onOpenEmergency }: { onOpenEmergency: () => void }) {
           {(close) => (
             <>
               <div className="px-2.5 pt-1.5 pb-2 nl-eyebrow">View as · demo</div>
-              {(Object.keys(ROLE_META) as Role[]).map((role) => {
-                const active = currentRole === role;
+              {DEMO_PROFILES.map((user) => {
+                const active = currentUser.id === user.id;
                 return (
                   <button
-                    key={role}
+                    key={user.id}
                     onClick={() => {
-                      setRole(role);
+                      setCurrentUserId(user.id);
                       close();
                     }}
+                    aria-label={`View as ${user.name}, ${ROLE_META[user.role].label}`}
                     className={cn("w-full min-h-11 text-left px-2.5 py-2 rounded-lg flex items-center gap-3", active ? "bg-accent-soft" : "hover:bg-surface-2")}
                   >
                     <span className="relative size-8 shrink-0 rounded-full bg-surface-3 grid place-items-center font-mono text-[11px] font-semibold text-ink">
-                      {initials(DEMO_USERS[role].name)}
-                      <span className={cn("absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-surface", ROLE_META[role].tone)} />
+                      {initials(user.name)}
+                      <span className={cn("absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-surface", ROLE_META[user.role].tone)} />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[13px] font-medium text-ink">{ROLE_META[role].label}</span>
-                      <span className="block text-[12px] text-ink-subtle truncate">{ROLE_META[role].hint}</span>
+                      <span className="block text-[13px] font-medium text-ink">{user.name}</span>
+                      <span className="block text-[12px] text-ink-subtle truncate">{ROLE_META[user.role].label} · {ROLE_META[user.role].hint}</span>
                     </span>
                     {active && <Check className="size-4 text-accent" strokeWidth={2.5} />}
                   </button>

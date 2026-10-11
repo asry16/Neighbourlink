@@ -39,6 +39,7 @@ export function IncidentDetailsPanel({
 }: IncidentDetailsPanelProps) {
   const {
     currentRole,
+    currentUser,
     incidents,
     sosRequests,
     corroborateIncident,
@@ -46,7 +47,6 @@ export function IncidentDetailsPanel({
     markIncidentResolved,
   } = useDemo();
 
-  const [corroborated, setCorroborated] = useState<Record<string, boolean>>({});
   const [disputeOpen, setDisputeOpen] = useState(false);
   const [disputeReason, setDisputeReason] = useState("");
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
@@ -74,6 +74,12 @@ export function IncidentDetailsPanel({
 
     return null;
   }, [incidentId, incidents, sosRequests]);
+
+  // Corroboration eligibility comes from server data so it follows the active user
+  const viewedIncident = targetData?.type === "INCIDENT" ? targetData.data : null;
+  const hasCorroborated = !!viewedIncident?.corroboratorIds?.includes(currentUser.id);
+  const isOwnReport = viewedIncident?.reporterId === currentUser.id;
+  const isResolved = viewedIncident?.status === "RESOLVED";
 
   // Find nearby incidents in the area (excluding current)
   const nearbyItems = useMemo(() => {
@@ -170,14 +176,13 @@ export function IncidentDetailsPanel({
   const handleCorroborate = async () => {
     if (targetData.type !== "INCIDENT") return;
     const inc = targetData.data as DemoIncident;
-    if (corroborated[inc.id] || isSubmitting) return;
+    if (hasCorroborated || isOwnReport || isResolved || isSubmitting) return;
 
     setIsSubmitting(true);
     const res = await corroborateIncident(inc.id);
     setIsSubmitting(false);
 
     if (res.success) {
-      setCorroborated((prev) => ({ ...prev, [inc.id]: true }));
       setFeedbackMsg(res.message || "Your independent observation has been recorded.");
     } else {
       setFeedbackMsg(res.message || "Could not record observation.");
@@ -359,19 +364,23 @@ export function IncidentDetailsPanel({
 
                 <button
                   onClick={handleCorroborate}
-                  disabled={!!corroborated[targetData.data.id]}
+                  disabled={hasCorroborated || isOwnReport || isResolved || isSubmitting}
                   id="corroborate-action-btn"
                   className={`w-full py-2.5 px-3 rounded-xl font-semibold text-[12.5px] flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                    corroborated[targetData.data.id]
+                    hasCorroborated || isOwnReport || isResolved
                       ? "bg-surface-3 text-ink-subtle cursor-not-allowed"
                       : "bg-ink text-canvas hover:opacity-90 shadow-md"
                   }`}
                 >
-                  {corroborated[targetData.data.id] ? (
+                  {hasCorroborated ? (
                     <>
                       <Check className="w-4 h-4 text-emerald-500" />
                       <span>You have corroborated this hazard</span>
                     </>
+                  ) : isOwnReport ? (
+                    <span>Your report · awaiting another resident&apos;s confirmation</span>
+                  ) : isResolved ? (
+                    <span>Report resolved</span>
                   ) : (
                     <>
                       <ThumbsUp className="w-4 h-4" />

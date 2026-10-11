@@ -50,6 +50,10 @@ export interface DemoIncident {
   status: "UNVERIFIED" | "CORROBORATED" | "DISPUTED" | "RESOLVED";
   observationCount: number;
   reporterName: string;
+  /** Present when loaded from the API. */
+  reporterId?: string;
+  /** Users who submitted an independent corroboration (from the API). */
+  corroboratorIds?: string[];
   observedAt: string;
   createdAt: string;
   photoUrl?: string;

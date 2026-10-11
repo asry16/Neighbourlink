@@ -237,10 +237,12 @@ export class SOSService {
         contactPhone: "[Redacted for Civilian Privacy]",
         localityName: sos.localityName,
         status: sos.status,
-        latitude: sos.fuzzyLatitude, // Fuzzed coordinates returned as primary coordinates
-        longitude: sos.fuzzyLongitude,
-        fuzzyLatitude: sos.fuzzyLatitude,
-        fuzzyLongitude: sos.fuzzyLongitude,
+        // Fuzzed coordinates returned as primary coordinates; re-rounded so stored
+        // values with excess precision can never leak a tighter location
+        latitude: this.roundToFuzzy(sos.fuzzyLatitude),
+        longitude: this.roundToFuzzy(sos.fuzzyLongitude),
+        fuzzyLatitude: this.roundToFuzzy(sos.fuzzyLatitude),
+        fuzzyLongitude: this.roundToFuzzy(sos.fuzzyLongitude),
         isExact: false,
         requesterName: "Civilian Requester",
         assignedOrgName: sos.assignedOrg?.name,
@@ -390,6 +392,19 @@ export class SOSService {
         payload: JSON.stringify({ trackingCode: sos.trackingCode }),
       },
     });
+
+    if (sos.requesterId !== authorUserId) {
+      await prisma.notification.create({
+        data: {
+          userId: sos.requesterId,
+          title: "Your SOS Has Been Resolved",
+          body: `Responders marked ${sos.trackingCode} as resolved. ${message}`,
+          type: "SOS_UPDATE",
+          link: `sos:${sosId}`,
+          status: "SENT",
+        },
+      });
+    }
 
     return updated;
   }

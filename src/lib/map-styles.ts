@@ -1,62 +1,44 @@
 // MapLibre basemap styles with fallback tile endpoints and API key support
 import type { StyleSpecification } from "maplibre-gl";
 
-export const LIGHT_MAP_STYLE: StyleSpecification = {
-  version: 8,
-  sources: {
-    "carto-light": {
-      type: "raster",
-      tiles: [
-        "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-        "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-        "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-      ],
-      tileSize: 256,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    },
-  },
-  layers: [
-    {
-      id: "carto-light-layer",
-      type: "raster",
-      source: "carto-light",
-      minzoom: 0,
-      maxzoom: 20,
-    },
-  ],
-};
+// Keyless fallback basemaps: Esri canvas base + label reference layers.
+// (CARTO's public raster tiles now return "API key required" watermarks.)
+const ESRI_CANVAS = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas";
+const ESRI_CANVAS_ATTRIBUTION =
+  "Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors, and the GIS user community";
 
-export const DARK_MAP_STYLE: StyleSpecification = {
-  version: 8,
-  sources: {
-    "carto-dark": {
-      type: "raster",
-      tiles: [
-        "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-        "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-        "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-      ],
-      tileSize: 256,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    },
-  },
-  layers: [
-    {
-      id: "carto-dark-layer",
-      type: "raster",
-      source: "carto-dark",
-      minzoom: 0,
-      maxzoom: 20,
-      paint: {
-        "raster-contrast": 0.1,
-        "raster-brightness-min": 0.08,
-        "raster-brightness-max": 0.92,
+// Source IDs differ per tone: setStyle() diffs by ID and would otherwise keep
+// the old tiles when only the URL changes.
+function esriCanvasStyle(tone: "Light" | "Dark"): StyleSpecification {
+  const base = `esri-${tone.toLowerCase()}-base`;
+  const labels = `esri-${tone.toLowerCase()}-labels`;
+  return {
+    version: 8,
+    sources: {
+      [base]: {
+        type: "raster",
+        tiles: [`${ESRI_CANVAS}/World_${tone}_Gray_Base/MapServer/tile/{z}/{y}/{x}`],
+        tileSize: 256,
+        maxzoom: 16,
+        attribution: ESRI_CANVAS_ATTRIBUTION,
+      },
+      [labels]: {
+        type: "raster",
+        tiles: [`${ESRI_CANVAS}/World_${tone}_Gray_Reference/MapServer/tile/{z}/{y}/{x}`],
+        tileSize: 256,
+        maxzoom: 16,
       },
     },
-  ],
-};
+    layers: [
+      { id: `${base}-layer`, type: "raster", source: base },
+      { id: `${labels}-layer`, type: "raster", source: labels },
+    ],
+  };
+}
+
+export const LIGHT_MAP_STYLE: StyleSpecification = esriCanvasStyle("Light");
+
+export const DARK_MAP_STYLE: StyleSpecification = esriCanvasStyle("Dark");
 
 export const SATELLITE_FALLBACK_STYLE: StyleSpecification = {
   version: 8,
@@ -106,8 +88,8 @@ export const terrainTileJsonUrl = (key: string) =>
   `https://api.maptiler.com/tiles/terrain-rgb-v2/tiles.json?key=${key}`;
 
 /**
- * Basemap style for the current theme and map type. Falls back to open CARTO
- * / Esri raster tiles when no MapTiler key is configured.
+ * Basemap style for the current theme and map type. Falls back to keyless
+ * Esri raster tiles when no MapTiler key is configured.
  */
 export function getMapStyle(
   isDark: boolean,

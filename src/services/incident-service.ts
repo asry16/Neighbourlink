@@ -158,6 +158,14 @@ export class IncidentService {
       throw new Error("Incident not found");
     }
 
+    if (incident.reporterId === userId) {
+      throw new Error("You cannot corroborate your own report. Another resident must independently observe it.");
+    }
+
+    if (incident.status === "RESOLVED") {
+      throw new Error("This report has already been resolved.");
+    }
+
     // Check if this user has already corroborated this incident
     const alreadyObserved = incident.observations.some(
       (obs) => obs.userId === userId && obs.type === "CORROBORATION"
@@ -202,6 +210,18 @@ export class IncidentService {
           trackingCode: incident.trackingCode,
           observationId: observation.id,
         }),
+      },
+    });
+
+    // Let the original reporter know their report was independently confirmed
+    await prisma.notification.create({
+      data: {
+        userId: incident.reporterId,
+        title: "Your Report was Corroborated",
+        body: `Another resident independently confirmed ${incident.trackingCode}. It is now community-corroborated.`,
+        type: "CORROBORATION",
+        link: `incident:${incidentId}`,
+        status: "SENT",
       },
     });
 

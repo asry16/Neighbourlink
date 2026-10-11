@@ -41,6 +41,27 @@ export const DEMO_USERS: Record<Role, DemoUser> = {
   },
 };
 
+/** Every seeded account selectable in the "View as" switcher. */
+export const DEMO_PROFILES: DemoUser[] = [
+  DEMO_USERS.RESIDENT,
+  {
+    id: "usr-resident-2",
+    name: "Debashis Roy",
+    email: "debashis.roy@example.org",
+    role: "RESIDENT",
+    phone: "+91 98302 34567",
+  },
+  {
+    id: "usr-resident-3",
+    name: "Sourav Mukherjee",
+    email: "sourav.m@example.org",
+    role: "RESIDENT",
+    phone: "+91 98303 45678",
+  },
+  DEMO_USERS.RESPONDER,
+  DEMO_USERS.ADMIN,
+];
+
 export interface Locality {
   id: string;
   name: string;
@@ -177,6 +198,7 @@ interface DemoContextType {
   currentRole: Role;
   currentUser: DemoUser;
   setRole: (role: Role) => void;
+  setCurrentUserId: (id: string) => void;
   currentLocality: Locality;
   setLocality: (locality: Locality) => void;
   layerFilters: LayerFilters;
@@ -215,6 +237,7 @@ interface DemoContextType {
   submitSOS: (data: any) => Promise<{ success: boolean; data?: any; error?: string }>;
   acknowledgeSOS: (sosId: string, message?: string) => Promise<{ success: boolean; message?: string }>;
   resolveSOS: (sosId: string, message?: string) => Promise<{ success: boolean; message?: string }>;
+  postSOSUpdate: (sosId: string, message: string) => Promise<{ success: boolean; message?: string }>;
   notifications: NotificationItem[];
   refreshNotifications: () => Promise<void>;
   markNotificationRead: (id: string) => Promise<void>;
@@ -238,7 +261,7 @@ function toDemoSOS(item: any): DemoSOS {
 const DemoContext = createContext<DemoContextType | undefined>(undefined);
 
 export function DemoProvider({ children }: { children: React.ReactNode }) {
-  const [currentRole, setCurrentRole] = useState<Role>("RESIDENT");
+  const [currentUserId, setCurrentUserId] = useState<string>(DEMO_USERS.RESIDENT.id);
   const [currentLocality, setLocality] = useState<Locality>(DEMO_LOCALITIES[0]);
   const [manualLocation, setManualLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [mapFocus, setMapFocus] = useState<MapFocusRequest | null>(null);
@@ -269,7 +292,9 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
   const [sosRequests, setSosRequests] = useState<any[]>(INITIAL_SOS_REQUESTS);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
-  const currentUser = DEMO_USERS[currentRole];
+  const currentUser = DEMO_PROFILES.find((u) => u.id === currentUserId) ?? DEMO_USERS.RESIDENT;
+  const currentRole = currentUser.role;
+  const setRole = useCallback((role: Role) => setCurrentUserId(DEMO_USERS[role].id), []);
 
   // Fetch incidents
   const refreshIncidents = useCallback(async () => {
@@ -291,6 +316,10 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
             status: item.status,
             observationCount: Math.max(1, item.observations?.length ?? 0),
             reporterName: item.reporter?.name || "Citizen Reporter",
+            reporterId: item.reporterId,
+            corroboratorIds: (item.observations ?? [])
+              .filter((o: { type: string }) => o.type === "CORROBORATION")
+              .map((o: { userId: string }) => o.userId),
             observedAt: item.observedAt,
             createdAt: item.createdAt,
             photoUrls: (item.evidence ?? []).map((e: { fileUrl: string }) => e.fileUrl),
@@ -465,6 +494,25 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const postSOSUpdate = async (sosId: string, message: string) => {
+    try {
+      const res = await fetch(`/api/sos/${sosId}/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ authorUserId: currentUser.id, message }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, message: data.error || "Failed to post update" };
+      }
+      await refreshSOS();
+      await refreshNotifications();
+      return { success: true, message: "Progress update sent to the requester." };
+    } catch (err: any) {
+      return { success: false, message: err.message };
+    }
+  };
+
   const resolveSOS = async (sosId: string, message: string = "Evacuation complete.") => {
     try {
       const res = await fetch(`/api/sos/${sosId}/resolve`, {
@@ -518,7 +566,8 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       value={{
         currentRole,
         currentUser,
-        setRole: setCurrentRole,
+        setRole,
+        setCurrentUserId,
         currentLocality,
         setLocality,
         layerFilters,
@@ -555,6 +604,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         submitSOS,
         acknowledgeSOS,
         resolveSOS,
+        postSOSUpdate,
         notifications,
         refreshNotifications,
         markNotificationRead,
