@@ -249,6 +249,16 @@
   }
 }
 
+/* Selected map item ("View on map"). */
+.maplibregl-marker.is-selected {
+  z-index: 5;
+}
+.maplibregl-marker.is-selected > * {
+  outline: 3px solid var(--nl-accent);
+  outline-offset: 3px;
+  border-radius: 999px;
+}
+
 /* --------------------------------------------------------------------------
    MapLibre overrides
    -------------------------------------------------------------------------- */

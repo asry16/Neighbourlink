@@ -53,6 +53,7 @@ export interface DemoIncident {
   observedAt: string;
   createdAt: string;
   photoUrl?: string;
+  photoUrls?: string[];
 }
 
 export interface DemoSOS {

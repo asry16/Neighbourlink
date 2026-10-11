@@ -8,16 +8,17 @@ import { getMapTilerKey } from "@/lib/map-styles";
 import { setMapApiKeyOverride, useMapApiKeyOverride } from "@/lib/map-key";
 
 /** Diagnostics: which basemap provider is active, with an optional per-browser override. */
-export function MapProviderSettings() {
+export function MapProviderSettings({ embedded = false }: { embedded?: boolean }) {
   const override = useMapApiKeyOverride();
   const [draft, setDraft] = useState<string | null>(null);
   const value = draft ?? override;
   const usingMapTiler = Boolean(getMapTilerKey(override));
 
+  const Wrapper = embedded ? "div" : Card;
   return (
-    <Card className="p-5">
+    <Wrapper className={embedded ? "" : "p-5"}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-[16px] font-semibold text-ink">Map provider</h2>
+        {!embedded && <h2 className="text-[16px] font-semibold text-ink">Map provider</h2>}
         <Badge tone={usingMapTiler ? "ok" : "warn"}>
           {usingMapTiler ? "MapTiler" : "Open fallback tiles (CARTO / Esri)"}
         </Badge>
@@ -64,13 +65,13 @@ export function MapProviderSettings() {
         href="https://cloud.maptiler.com/account/keys/"
         target="_blank"
         rel="noreferrer"
-        className="mt-3 inline-flex items-center gap-1 text-[12.5px] text-accent-ink hover:underline"
+        className="mt-2 min-h-11 inline-flex items-center gap-1 text-[12.5px] text-accent-ink hover:underline"
       >
         Manage MapTiler keys <ExternalLink className="size-3" />
       </a>
       <div className="mt-4 pt-3 border-t border-line flex items-center gap-2 text-[12.5px] text-ink-subtle">
         <span className="nl-live-dot text-ok" /> Data sync: local demo adapter (Prisma / SQLite)
       </div>
-    </Card>
+    </Wrapper>
   );
 }

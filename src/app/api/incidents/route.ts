@@ -27,6 +27,7 @@ export async function POST(request: Request) {
       reportedImpact,
       observedAt,
       reporterId,
+      evidence,
     } = body;
 
     if (!category || !latitude || !longitude || !description || !reporterId) {
@@ -35,6 +36,24 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    // Only accept evidence produced by /api/evidence/upload.
+    const evidenceItems = Array.isArray(evidence)
+      ? evidence
+          .filter(
+            (e: { fileUrl?: unknown }) =>
+              e &&
+              typeof e.fileUrl === "string" &&
+              /^\/uploads\/evid_\d+_[a-z0-9]+\.(jpg|png|webp)$/.test(e.fileUrl)
+          )
+          .slice(0, 4)
+          .map((e: { fileUrl: string; fileName?: unknown; mimeType?: unknown; sizeBytes?: unknown }) => ({
+            fileUrl: e.fileUrl as string,
+            fileName: String(e.fileName ?? e.fileUrl.split("/").pop()),
+            mimeType: String(e.mimeType ?? "image/jpeg"),
+            sizeBytes: Number(e.sizeBytes) || 0,
+          }))
+      : [];
 
     const incident = await IncidentService.createIncident({
       category,
@@ -46,6 +65,7 @@ export async function POST(request: Request) {
       reportedImpact: reportedImpact || "Under investigation",
       observedAt: observedAt ? new Date(observedAt) : new Date(),
       reporterId,
+      evidence: evidenceItems,
     });
 
     return NextResponse.json({ success: true, data: incident }, { status: 201 });

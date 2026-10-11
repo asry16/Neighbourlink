@@ -117,6 +117,7 @@ export class SOSService {
             title: `Priority SOS Alert: ${input.category}`,
             body: `${input.peopleCount} citizen(s) stranded in ${input.localityName}. Tracking: ${trackingCode}`,
             type: "SOS_DISPATCH",
+            link: `sos:${sos.id}`,
             status: "SENT",
           },
         });
@@ -130,6 +131,7 @@ export class SOSService {
         title: "SOS Broadcast Dispatched",
         body: `Your request (${trackingCode}) has been routed to registered participating disaster response units. Keep line open.`,
         type: "SOS_UPDATE",
+        link: `sos:${sos.id}`,
         status: "SENT",
       },
     });
@@ -293,6 +295,7 @@ export class SOSService {
         title: "Responder Acknowledged Your SOS",
         body: `${updated.assignedOrg?.name || "Disaster unit"} has acknowledged your request (${sos.trackingCode}). ${message}`,
         type: "SOS_UPDATE",
+        link: `sos:${sosId}`,
         status: "SENT",
       },
     });
@@ -344,6 +347,7 @@ export class SOSService {
         title: "Rescue Update on Your SOS",
         body: message,
         type: "SOS_UPDATE",
+        link: `sos:${sosId}`,
         status: "SENT",
       },
     });

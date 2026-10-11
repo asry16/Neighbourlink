@@ -41,7 +41,7 @@ export function ThemeSwitcher({ className }: { className?: string }) {
             aria-checked={active}
             onClick={() => setTheme(o.value)}
             className={cn(
-              "h-10 md:h-8 rounded-md flex items-center justify-center gap-1.5 text-[12.5px] font-medium transition-colors",
+              "h-11 md:h-8 rounded-md flex items-center justify-center gap-1.5 text-[12.5px] font-medium transition-colors",
               active
                 ? "bg-surface text-ink shadow-[0_1px_2px_oklch(0_0_0/0.08),0_0_0_1px_var(--color-line)]"
                 : "text-ink-subtle hover:text-ink"

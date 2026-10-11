@@ -4,7 +4,6 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import * as maplibregl from "maplibre-gl";
 import { useTheme } from "next-themes";
 import {
-  Layers,
   Compass,
   Navigation,
   RotateCcw,
@@ -13,11 +12,7 @@ import {
   Plus,
   Minus,
   Maximize2,
-  Map as MapIcon,
-  Satellite as SatelliteIcon,
 } from "lucide-react";
-import { createPortal } from "react-dom";
-import { useDismiss } from "@/lib/use-dismiss";
 import { getMapStyle, getMapTilerKey, LIGHT_MAP_STYLE, DARK_MAP_STYLE } from "@/lib/map-styles";
 import { useMapApiKeyOverride } from "@/lib/map-key";
 import { applyMapEnhancements, type MapCapabilities } from "./map-enhancements";
@@ -27,10 +22,25 @@ import {
   INITIAL_RISK_ESTIMATES,
   INITIAL_HELP_CENTRES,
 } from "@/lib/demo-data";
-import { useDemo, type LayerFilters } from "@/context/demo-context";
+import { useDemo } from "@/context/demo-context";
 import { humanize } from "@/components/ui/primitives";
 import { HAZARD_TONE, INCIDENT_TONE, RISK_TONE, SOS_CATEGORY_LABEL, formatDateTime } from "@/lib/status";
-import { esc, labelHTML, manualLocationHTML, pinHTML, popupHTML, sosAreaHTML, sosPinHTML, userLocationHTML } from "./marker-html";
+import {
+  detailsButtonHTML,
+  esc,
+  labelHTML,
+  manualLocationHTML,
+  pickPinHTML,
+  pinHTML,
+  popupHTML,
+  sosAreaHTML,
+  sosPinHTML,
+  userLocationHTML,
+  wireDetailsButton,
+} from "./marker-html";
+import { useOverlay, isDrawer } from "@/context/overlay-context";
+import { LayersPopover, MAP_LAYERS, MapTypePopover } from "./map-popovers";
+import { useEscape } from "@/components/ui/a11y";
 import { formatAccuracy } from "@/lib/use-live-location";
 
 const INCIDENT_PIN_BG: Record<string, string> = {
@@ -56,29 +66,9 @@ function sizeAccuracyRing(el: HTMLElement, zoom: number) {
 /** Comfortable 3D perspective. */
 const PITCH_3D = 58;
 
-const MAP_LAYERS: {
-  key: keyof LayerFilters;
-  label: string;
-  short: string;
-  dot: string;
-  kind: string;
-}[] = [
-  { key: "officialHazards", label: "Official warnings", short: "Official", dot: "bg-orange-500", kind: "Issued by government agencies" },
-  { key: "riskEstimates", label: "Flood risk", short: "Flood risk (experimental)", dot: "bg-indigo-500", kind: "Experimental estimate, not a warning" },
-  { key: "communityReports", label: "Community reports", short: "Reports", dot: "bg-sky-500", kind: "Resident observations" },
-  { key: "sosAreas", label: "SOS requests", short: "SOS", dot: "bg-red-500", kind: "Approximate areas for the public" },
-  { key: "helpCentres", label: "Help centres", short: "Help centres", dot: "bg-emerald-500", kind: "Participating shelters and aid" },
-];
 
-interface GeospatialMapProps {
-  onSelectIncident: (id: string) => void;
-  onMapClickCoordinates?: (coords: { lat: number; lng: number }) => void;
-}
-
-export function GeospatialMap({
-  onSelectIncident,
-  onMapClickCoordinates,
-}: GeospatialMapProps) {
+/** The map workspace. Stays mounted for the whole session (one instance). */
+export function GeospatialMap() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
@@ -90,6 +80,7 @@ export function GeospatialMap({
     toggleLayer,
     currentRole,
     selectedIncidentId,
+    setSelectedIncidentId,
     is3D,
     setIs3D,
     incidents,
@@ -113,13 +104,18 @@ export function GeospatialMap({
   // Follow mode: "paused" when the user pans away; they can resume explicitly.
   const [follow, setFollow] = useState<"off" | "on" | "paused">("off");
   const centerOnNextFixRef = useRef(false);
-  const [pickingLocation, setPickingLocation] = useState(false);
+  const { overlay, open: openOverlay, picking, pickLocation, finishPick } = useOverlay();
+  const pickingLocation = !!picking;
   const pickingRef = useRef(false);
+  const pickMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const [pickPos, setPickPos] = useState<{ lat: number; lng: number } | null>(null);
+  const confirmPickRef = useRef<HTMLButtonElement>(null);
+  const openDetailsRef = useRef<(id: string) => void>(() => {});
 
   const [mapLoaded, setMapLoaded] = useState(false);
   const [webGlSupported, setWebGlSupported] = useState(true);
   const [bearing, setBearing] = useState(0);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [popover, setPopover] = useState<"type" | "layers" | null>(null);
   const [capabilities, setCapabilities] = useState<MapCapabilities>({ buildings: false, terrain: false });
   const keyRejectedRef = useRef(false);
   const cameraSnapshotRef = useRef<maplibregl.JumpToOptions | null>(null);
@@ -257,6 +253,10 @@ export function GeospatialMap({
   // the effects that call them so it runs first each commit.
   useEffect(() => {
     pickingRef.current = pickingLocation;
+    openDetailsRef.current = (id: string) => {
+      setSelectedIncidentId(id);
+      void openOverlay({ kind: "details", id });
+    };
     isDarkRef.current = isDark;
     updateVisibleCountRef.current = updateVisibleCount;
     enhanceRef.current = enhance;
@@ -334,12 +334,11 @@ export function GeospatialMap({
       m.on("moveend", () => updateVisibleCountRef.current());
 
       m.on("click", (e) => {
+        // While choosing a location, a tap moves the pin.
         if (pickingRef.current) {
-          setManualLocation({ lat: e.lngLat.lat, lng: e.lngLat.lng });
-          setPickingLocation(false);
-          return;
+          pickMarkerRef.current?.setLngLat(e.lngLat);
+          setPickPos({ lat: e.lngLat.lat, lng: e.lngLat.lng });
         }
-        onMapClickCoordinates?.({ lat: e.lngLat.lat, lng: e.lngLat.lng });
       });
 
       // Container size changes (tab switches, drawer, rotation, mobile
@@ -554,13 +553,44 @@ export function GeospatialMap({
     };
   }, [mapLoaded]);
 
-  // Escape cancels "pick location on map".
+  // Choose-on-map: draggable pin; the requesting form stays mounted (draft kept).
   useEffect(() => {
-    if (!pickingLocation) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setPickingLocation(false);
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [pickingLocation]);
+    const m = map.current;
+    if (!m || !mapLoaded || !picking) return;
+    const start = picking.initial ?? { lat: m.getCenter().lat, lng: m.getCenter().lng };
+    const el = document.createElement("div");
+    el.innerHTML = pickPinHTML();
+    const marker = new maplibregl.Marker({ element: el, anchor: "bottom", draggable: true })
+      .setLngLat([start.lng, start.lat])
+      .addTo(m);
+    marker.on("dragend", () => {
+      const p = marker.getLngLat();
+      setPickPos({ lat: p.lat, lng: p.lng });
+    });
+    pickMarkerRef.current = marker;
+    setPickPos(start);
+    m.easeTo({ center: [start.lng, start.lat], zoom: Math.max(m.getZoom(), 15), duration: 600 });
+    return () => {
+      marker.remove();
+      pickMarkerRef.current = null;
+      setPickPos(null);
+    };
+  }, [picking, mapLoaded]);
+
+  useEscape(pickingLocation, () => finishPick(null));
+
+  // The form is hidden while picking: move keyboard focus to the location bar.
+  useEffect(() => {
+    if (!picking) return;
+    const t = setTimeout(() => confirmPickRef.current?.focus(), 0);
+    return () => clearTimeout(t);
+  }, [picking]);
+
+  const pickMyLocation = async () => {
+    const c = map.current?.getCenter();
+    const p = await pickLocation("my-location", manualLocation ?? (c ? { lat: c.lat, lng: c.lng } : null));
+    if (p) setManualLocation(p);
+  };
 
   // Render Geospatial HTML Markers
   const renderMarkers = useCallback(() => {
@@ -591,25 +621,17 @@ export function GeospatialMap({
             title: inc.categoryLabel,
             body: esc(inc.description),
             meta: `Community observation · ${esc(inc.localityName)}<br/>Observed ${esc(formatDateTime(inc.observedAt))} · ${inc.observationCount} independent observation${inc.observationCount === 1 ? "" : "s"}`,
-            footer: `<button id="inspect-inc-${esc(inc.id)}" class="mt-3 w-full h-8 rounded-lg bg-ink text-canvas text-[12.5px] font-medium">Inspect &amp; corroborate</button>`,
+            footer: detailsButtonHTML(inc.id),
           })
         );
 
-        popup.on("open", () => {
-          const btn = document.getElementById(`inspect-inc-${inc.id}`);
-          if (btn) {
-            btn.onclick = () => onSelectIncident(inc.id);
-          }
-        });
+        wireDetailsButton(popup, inc.id, (id) => openDetailsRef.current(id));
+        el.dataset.id = inc.id;
 
         const marker = new maplibregl.Marker({ element: el })
           .setLngLat([inc.longitude, inc.latitude])
           .setPopup(popup)
           .addTo(map.current!);
-
-        el.addEventListener("click", () => {
-          onSelectIncident(inc.id);
-        });
 
         markersRef.current.push(marker);
       });
@@ -638,8 +660,11 @@ export function GeospatialMap({
             meta: isResponder
               ? `<span class="text-ink font-mono">${esc(sos.contactPhone)}</span> · ${esc(sos.requesterName)}`
               : undefined,
+            footer: detailsButtonHTML(sos.id),
           })
         );
+        wireDetailsButton(popup, sos.id, (id) => openDetailsRef.current(id));
+        el.dataset.id = sos.id;
 
         const marker = new maplibregl.Marker({ element: el })
           .setLngLat([lng, lat])
@@ -664,8 +689,11 @@ export function GeospatialMap({
             title: haz.headline,
             body: esc(haz.description),
             meta: `${esc(haz.source)}<br/>Issued ${esc(formatDateTime(haz.issuedAt))} · expires ${esc(formatDateTime(haz.expiresAt))}`,
+            footer: detailsButtonHTML(haz.id),
           })
         );
+        wireDetailsButton(popup, haz.id, (id) => openDetailsRef.current(id));
+        el.dataset.id = haz.id;
 
         const marker = new maplibregl.Marker({ element: el })
           .setLngLat([haz.centerLng, haz.centerLat])
@@ -683,24 +711,18 @@ export function GeospatialMap({
         el.className = "marker-risk cursor-pointer";
         el.innerHTML = labelHTML(`${humanize(risk.riskLevel)} flood risk`, "bg-indigo-500");
 
-        const stat = (label: string, value: string) =>
-          `<div><div class="nl-eyebrow !text-[9.5px]">${label}</div><div class="font-mono text-[12.5px] text-ink">${value}</div></div>`;
-
         const popup = new maplibregl.Popup({ offset: 20 }).setHTML(
           popupHTML({
-            badge: `${humanize(risk.riskLevel)} risk · ${risk.horizonHours}h`,
+            badge: `Experimental · ${humanize(risk.riskLevel)} risk`,
             tone: RISK_TONE[risk.riskLevel],
             title: risk.localityName,
             body: esc(risk.explanation),
-            footer: `
-              <div class="mt-3 grid grid-cols-3 gap-2 rounded-lg bg-surface-2 p-2.5">
-                ${stat("Rain 24h", `${risk.rainfallRecentMm ?? "—"} mm`)}
-                ${stat("Forecast", `${risk.rainfallForecastMm ?? "—"} mm`)}
-                ${stat("Gauge", `${risk.waterLevelMeters ?? "—"} m`)}
-              </div>
-              <p class="mt-2.5 text-[11.5px] text-ink-subtle">Experimental rule-based estimate, evaluated ${esc(formatDateTime(risk.evaluatedAt))} — not an official warning.</p>`,
+            meta: `Evaluated ${esc(formatDateTime(risk.evaluatedAt))} · not an official warning`,
+            footer: detailsButtonHTML(risk.id),
           })
         );
+        wireDetailsButton(popup, risk.id, (id) => openDetailsRef.current(id));
+        el.dataset.id = risk.id;
 
         const marker = new maplibregl.Marker({ element: el })
           .setLngLat([risk.centerLng, risk.centerLat])
@@ -724,14 +746,11 @@ export function GeospatialMap({
             tone: "ok",
             title: hc.name,
             meta: `<span class="font-mono text-ink">${hc.capacityAvailable}/${hc.capacityTotal}</span> spaces free · <span class="font-mono">${esc(hc.contactPhone)}</span>`,
-            footer: `<div class="mt-3 flex flex-wrap gap-1">${hc.facilities
-              .map(
-                (f) =>
-                  `<span class="h-5 px-1.5 rounded bg-surface-2 text-[12px] text-ink-muted inline-flex items-center">${esc(f)}</span>`
-              )
-              .join("")}</div>`,
+            footer: detailsButtonHTML(hc.id, "All help centres"),
           })
         );
+        wireDetailsButton(popup, hc.id, () => void openOverlay({ kind: "help" }));
+        el.dataset.id = hc.id;
 
         const marker = new maplibregl.Marker({ element: el })
           .setLngLat([hc.longitude, hc.latitude])
@@ -748,10 +767,10 @@ export function GeospatialMap({
     mapLoaded,
     layerFilters,
     currentRole,
-    onSelectIncident,
     incidents,
     sosRequests,
     updateVisibleCount,
+    openOverlay,
   ]);
 
   // Re-run markers whenever layers or role changes
@@ -760,67 +779,23 @@ export function GeospatialMap({
   }, [renderMarkers]);
 
   // Handle selected incident, official hazard, risk estimate, or SOS flyTo
+  // Highlight the selected item's marker (set by "View on map" / details).
   useEffect(() => {
-    if (!selectedIncidentId || !map.current || !mapLoaded) return;
+    markersRef.current.forEach((mk) => {
+      const el = mk.getElement();
+      el.classList.toggle("is-selected", !!selectedIncidentId && el.dataset.id === selectedIncidentId);
+    });
+  }, [selectedIncidentId, mapLoaded, layerFilters, incidents, sosRequests]);
 
-    // 1. Check Community Incidents
-    const incTarget = incidents.find((i) => i.id === selectedIncidentId);
-    if (incTarget) {
-      map.current.flyTo({
-        center: [incTarget.longitude, incTarget.latitude],
-        zoom: 16,
-        essential: true,
-        duration: 1200,
-      });
-      return;
-    }
-
-    // 2. Check Official Hazards
-    const hazTarget = INITIAL_OFFICIAL_HAZARDS.find((h) => h.id === selectedIncidentId);
-    if (hazTarget) {
-      map.current.flyTo({
-        center: [hazTarget.centerLng, hazTarget.centerLat],
-        zoom: 15,
-        essential: true,
-        duration: 1200,
-      });
-      return;
-    }
-
-    // 3. Check Risk Estimates
-    const riskTarget = INITIAL_RISK_ESTIMATES.find((r) => r.id === selectedIncidentId);
-    if (riskTarget) {
-      map.current.flyTo({
-        center: [riskTarget.centerLng, riskTarget.centerLat],
-        zoom: 15,
-        essential: true,
-        duration: 1200,
-      });
-      return;
-    }
-
-    // 4. Check SOS Requests
-    const sosTarget = sosRequests.find((s: any) => s.id === selectedIncidentId);
-    if (sosTarget) {
-      const isResponder = currentRole === "RESPONDER" || currentRole === "ADMIN";
-      const lng = isResponder
-        ? sosTarget.exactLongitude || sosTarget.longitude
-        : sosTarget.fuzzyLongitude || sosTarget.longitude;
-      const lat = isResponder
-        ? sosTarget.exactLatitude || sosTarget.latitude
-        : sosTarget.fuzzyLatitude || sosTarget.latitude;
-      if (lng && lat) {
-        map.current.flyTo({
-          center: [lng, lat],
-          zoom: 16,
-          essential: true,
-          duration: 1200,
-        });
-      }
-    }
-    // Only re-fly when the selection changes, not when data or perspective does.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedIncidentId, mapLoaded]);
+  // Desktop: keep markers clear of the right-hand drawer.
+  const drawerOpen = isDrawer(overlay);
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapLoaded) return;
+    const desktop = window.matchMedia("(min-width: 768px)").matches;
+    const right = drawerOpen && desktop ? (window.matchMedia("(min-width: 1024px)").matches ? 420 : 380) : 0;
+    m.easeTo({ padding: { top: 0, bottom: 0, left: 0, right }, duration: 300 });
+  }, [drawerOpen, mapLoaded]);
 
   if (!webGlSupported) {
     return (
@@ -852,16 +827,43 @@ export function GeospatialMap({
       {/* MapLibre DOM Target */}
       <div ref={mapContainer} className="w-full h-full" id="geospatial-map-canvas" />
 
-      {/* Status (top-left): location, picking, 3D limitations */}
-      <div className="absolute top-3 left-3 md:top-4 md:left-4 z-20 flex flex-col items-start gap-2 max-w-[calc(100%-5.5rem)] md:max-w-sm">
-        {pickingLocation && (
-          <div className={`${chip} pl-3 pr-1`} role="status">
-            <span className="text-ink">Tap the map to set your location</span>
-            <button onClick={() => setPickingLocation(false)} className={chipBtn}>
+      {/* Choose-on-map bar (form is hidden with its draft kept) */}
+      {picking && (
+        <div
+          role="dialog"
+          aria-label="Choose location"
+          className="absolute z-40 left-3 right-3 bottom-3 md:left-1/2 md:right-auto md:-translate-x-1/2 md:bottom-6 md:w-[26rem] rounded-2xl border border-line bg-surface shadow-[var(--shadow-float)] p-4 animate-rise"
+        >
+          <p className="text-[15px] font-semibold text-ink">Choose location</p>
+          <p className="mt-0.5 text-[13px] text-ink-muted">
+            Tap the map or drag the pin to the exact spot.
+          </p>
+          {pickPos && (
+            <p className="mt-1 font-mono text-[12px] text-ink-subtle" aria-live="polite">
+              {pickPos.lat.toFixed(5)}, {pickPos.lng.toFixed(5)}
+            </p>
+          )}
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={() => finishPick(null)}
+              className="h-11 px-4 rounded-lg border border-line text-[13.5px] font-medium text-ink hover:bg-surface-2"
+            >
               Cancel
             </button>
+            <button
+              ref={confirmPickRef}
+              onClick={() => finishPick(pickPos)}
+              disabled={!pickPos}
+              className="flex-1 h-11 rounded-lg bg-ink text-canvas text-[13.5px] font-medium disabled:opacity-50"
+            >
+              Confirm location
+            </button>
           </div>
-        )}
+        </div>
+      )}
+
+      {/* Status (top-left): location, picking, 3D limitations */}
+      <div className="absolute top-3 left-3 md:top-4 md:left-4 z-20 flex flex-col items-start gap-2 max-w-[calc(100%-5.5rem)] md:max-w-sm">
 
         {locationStatus === "requesting" && (
           <div className={`${chip} px-3 text-ink-muted`} role="status">
@@ -898,7 +900,7 @@ export function GeospatialMap({
           <div className={`${chip} py-2 pl-3 pr-1 items-start flex-wrap`} role="status">
             <span className="mt-1.5 size-1.5 rounded-full bg-warn shrink-0" />
             <span className="flex-1 min-w-[12rem] text-ink-muted leading-snug py-0.5">{locationError}</span>
-            <button onClick={() => setPickingLocation(true)} className={chipBtn}>
+            <button onClick={() => void pickMyLocation()} className={chipBtn}>
               Set on map
             </button>
           </div>
@@ -908,7 +910,7 @@ export function GeospatialMap({
           <div className={`${chip} pl-3 pr-1`} role="status">
             <span className="size-2 rounded-full bg-ink" />
             <span className="text-ink">Using the location you set</span>
-            <button onClick={() => setPickingLocation(true)} className={chipBtn}>
+            <button onClick={() => void pickMyLocation()} className={chipBtn}>
               Change
             </button>
             <button onClick={() => setManualLocation(null)} className={chipBtn}>
@@ -938,19 +940,30 @@ export function GeospatialMap({
       )}
 
       {/* Controls (top-right) */}
-      <div className="absolute top-3 right-3 md:top-4 md:right-4 z-30 flex flex-col items-end gap-2">
-        <MapPanel
-          open={panelOpen}
-          onOpenChange={setPanelOpen}
-          layerFilters={layerFilters}
-          toggleLayer={toggleLayer}
-          onFitAll={() => {
-            fitToActiveIncidents();
-            setPanelOpen(false);
-          }}
-          is3D={is3D}
-          capabilities={capabilities}
-        />
+      <div
+        className={`absolute top-3 right-3 md:top-4 z-30 flex flex-col items-end gap-2 transition-[right] duration-300 ${
+          drawerOpen ? "md:right-[396px] lg:right-[436px]" : "md:right-4"
+        }`}
+      >
+        <div className="flex gap-2">
+          <MapTypePopover
+            open={popover === "type"}
+            onOpenChange={(o) => setPopover(o ? "type" : null)}
+            isDark={isDark}
+            is3D={is3D}
+            capabilities={capabilities}
+          />
+          <LayersPopover
+            open={popover === "layers"}
+            onOpenChange={(o) => setPopover(o ? "layers" : null)}
+            layerFilters={layerFilters}
+            toggleLayer={toggleLayer}
+            onFitAll={() => {
+              fitToActiveIncidents();
+              setPopover(null);
+            }}
+          />
+        </div>
 
         <div className="nl-glass rounded-xl overflow-hidden flex flex-col divide-y divide-line">
           <button
@@ -1020,194 +1033,6 @@ export function GeospatialMap({
           </span>
         ))}
       </div>
-    </div>
-  );
-}
-
-/* --------------------------------------------------------------------------
-   Map panel: map type, satellite labels, overlays. Popover on desktop,
-   bottom sheet on mobile.
-   -------------------------------------------------------------------------- */
-
-function MapPanel({
-  open,
-  onOpenChange,
-  layerFilters,
-  toggleLayer,
-  onFitAll,
-  is3D,
-  capabilities,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  layerFilters: LayerFilters;
-  toggleLayer: (key: keyof LayerFilters) => void;
-  onFitAll: () => void;
-  is3D: boolean;
-  capabilities: MapCapabilities;
-}) {
-  const { basemapType, setBasemapType, satelliteLabels, setSatelliteLabels } = useDemo();
-  const ref = useRef<HTMLDivElement>(null);
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const close = useCallback(() => onOpenChange(false), [onOpenChange]);
-  useDismiss([ref, sheetRef], open, close);
-  const activeCount = Object.values(layerFilters).filter(Boolean).length;
-
-  const switchRow = (on: boolean) =>
-    `relative shrink-0 w-9 h-5 rounded-full transition-colors ${on ? "bg-accent" : "bg-surface-3"}`;
-  const knob = (on: boolean) =>
-    `absolute top-0.5 size-4 rounded-full bg-white shadow transition-[left] ${on ? "left-[18px]" : "left-0.5"}`;
-
-  const body = (
-    <>
-            <div className="nl-eyebrow mb-2">Map type</div>
-            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Map type">
-              {(
-                [
-                  { id: "street", label: "Street", icon: MapIcon },
-                  { id: "satellite", label: "Satellite", icon: SatelliteIcon },
-                ] as const
-              ).map((t) => {
-                const active = basemapType === t.id;
-                return (
-                  <button
-                    key={t.id}
-                    role="radio"
-                    aria-checked={active}
-                    onClick={() => setBasemapType(t.id)}
-                    className={`h-12 md:h-11 rounded-lg border flex items-center justify-center gap-2 text-[13px] font-medium transition-colors ${
-                      active
-                        ? "border-accent bg-accent-soft text-accent-ink"
-                        : "border-line text-ink-muted hover:border-line-strong hover:text-ink"
-                    }`}
-                  >
-                    <t.icon className="size-4" />
-                    {t.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            {basemapType === "satellite" && (
-              <>
-                <button
-                  role="switch"
-                  aria-checked={satelliteLabels}
-                  onClick={() => setSatelliteLabels(!satelliteLabels)}
-                  className="mt-2 w-full min-h-11 flex items-center gap-3 px-1 text-left"
-                >
-                  <span className="flex-1 text-[13px] text-ink">Road and place labels</span>
-                  <span className={switchRow(satelliteLabels)}>
-                    <span className={knob(satelliteLabels)} />
-                  </span>
-                </button>
-                <p className="text-[11.5px] text-ink-subtle px-1">
-                  Imagery is periodic, not live.
-                </p>
-              </>
-            )}
-
-            {is3D && (
-              <p className="mt-3 text-[11.5px] leading-snug text-ink-subtle px-1">
-                3D:{" "}
-                {capabilities.buildings
-                  ? "buildings from OpenStreetMap footprints (heights estimated where not recorded)"
-                  : "no building data on this basemap"}
-                {capabilities.terrain ? "; MapTiler terrain at true scale." : "."}
-              </p>
-            )}
-
-            <div className="mt-4 mb-1 flex items-center justify-between">
-              <span className="nl-eyebrow">Overlays</span>
-              <button
-                onClick={onFitAll}
-                className="h-9 md:h-7 px-2 rounded-md text-[12px] font-medium text-accent-ink hover:bg-accent-soft flex items-center gap-1.5"
-              >
-                <Maximize2 className="size-3" /> Fit to active
-              </button>
-            </div>
-            {MAP_LAYERS.map((layer) => {
-              const on = layerFilters[layer.key];
-              return (
-                <button
-                  key={layer.key}
-                  role="switch"
-                  aria-checked={on}
-                  onClick={() => toggleLayer(layer.key)}
-                  className="w-full min-h-11 md:min-h-10 flex items-center gap-3 px-1 rounded-lg hover:bg-surface-2 text-left"
-                >
-                  <span className={`size-2.5 rounded-full shrink-0 ${layer.dot} ${on ? "" : "opacity-30"}`} />
-                  <span className="flex-1 min-w-0">
-                    <span className={`block text-[13px] ${on ? "text-ink" : "text-ink-subtle"}`}>
-                      {layer.label}
-                    </span>
-                    <span className="block text-[11.5px] text-ink-subtle">{layer.kind}</span>
-                  </span>
-                  <span className={switchRow(on)}>
-                    <span className={knob(on)} />
-                  </span>
-                </button>
-              );
-            })}
-    </>
-  );
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => onOpenChange(!open)}
-        id="map-layers-toggle-btn"
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        aria-label="Map type and overlays"
-        className={`nl-glass h-11 md:h-9 rounded-xl px-3 flex items-center gap-2 text-[13px] font-medium transition-colors ${
-          open ? "text-ink" : "text-ink-muted hover:text-ink"
-        }`}
-      >
-        <Layers className="size-4" />
-        <span className="hidden sm:inline">Map</span>
-        <span className="font-mono text-[11px] text-ink-subtle">
-          {activeCount}/{MAP_LAYERS.length}
-        </span>
-      </button>
-
-      {open && (
-        <>
-          {/* Desktop: popover under the button */}
-          <div
-            role="dialog"
-            aria-label="Map type and overlays"
-            className="hidden md:block absolute z-50 right-0 top-full mt-2 w-80 max-h-[calc(100dvh-10rem)] overflow-y-auto rounded-xl bg-surface border border-line shadow-[var(--shadow-float)] p-3 animate-rise"
-          >
-            {body}
-          </div>
-          {/* Mobile: bottom sheet portalled above the bottom nav */}
-          {createPortal(
-            <div className="md:hidden">
-              <div className="fixed inset-0 z-[60] bg-black/45" onClick={close} aria-hidden />
-              <div
-                ref={sheetRef}
-                role="dialog"
-                aria-modal="true"
-                aria-label="Map type and overlays"
-                className="fixed z-[61] inset-x-0 bottom-0 max-h-[85dvh] overflow-y-auto rounded-t-2xl bg-surface border-t border-line shadow-[var(--shadow-float)] px-4 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))] animate-rise"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="mx-auto h-1 w-10 rounded-full bg-line-strong" />
-                </div>
-                {body}
-                <button
-                  onClick={close}
-                  className="mt-3 w-full h-11 rounded-lg bg-surface-2 text-[14px] font-medium text-ink"
-                >
-                  Done
-                </button>
-              </div>
-            </div>,
-            document.body
-          )}
-        </>
-      )}
     </div>
   );
 }

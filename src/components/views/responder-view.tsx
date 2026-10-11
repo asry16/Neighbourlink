@@ -11,7 +11,7 @@ import { Badge, humanize } from "@/components/ui/primitives";
 import { SOS_CATEGORY_LABEL, SOS_TONE } from "@/lib/status";
 import { useDemo } from "@/context/demo-context";
 
-export function ResponderView() {
+export function ResponderView({ embedded = false }: { embedded?: boolean }) {
   const { currentUser, sosRequests, acknowledgeSOS, resolveSOS } = useDemo();
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -47,9 +47,10 @@ export function ResponderView() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto">
-     <div className="px-4 md:px-8 py-6 md:py-10 max-w-4xl mx-auto w-full flex flex-col gap-8">
+    <div className={embedded ? "" : "flex-1 overflow-y-auto"}>
+     <div className={embedded ? "p-4 flex flex-col gap-5" : "px-4 md:px-8 py-6 md:py-10 max-w-4xl mx-auto w-full flex flex-col gap-8"}>
       <header>
+        {!embedded && (<>
         <div className="nl-eyebrow flex items-center gap-2">
           <ShieldCheck className="size-3.5 text-ok" /> Authorised personnel · KDRRT
         </div>
@@ -60,15 +61,21 @@ export function ResponderView() {
           Signed in as {currentUser.name}. Exact coordinates and callback numbers are unredacted
           here — handle them accordingly.
         </p>
-        <div className="mt-6 grid grid-cols-3 gap-px rounded-[var(--radius-card)] border border-line bg-line overflow-hidden">
+        </>)}
+        {embedded && (
+          <p className="text-[12.5px] text-ink-subtle">
+            Exact locations and callback numbers are visible to you as a verified responder.
+          </p>
+        )}
+        <div className={`${embedded ? "mt-3" : "mt-6"} grid grid-cols-3 gap-px rounded-[var(--radius-card)] border border-line bg-line overflow-hidden`}>
           {[
             { label: "Awaiting response", value: counts.REQUESTED, danger: true },
             { label: "In progress", value: counts.ACTIVE },
             { label: "Resolved", value: counts.RESOLVED },
           ].map((s) => (
-            <div key={s.label} className="bg-surface px-5 py-4">
+            <div key={s.label} className={embedded ? "bg-surface px-3 py-3" : "bg-surface px-5 py-4"}>
               <div
-                className={`font-display text-[28px] font-semibold tabular-nums leading-none ${
+                className={`font-display ${embedded ? "text-[22px]" : "text-[28px]"} font-semibold tabular-nums leading-none ${
                   s.danger && s.value > 0 ? "text-danger" : "text-ink"
                 }`}
               >

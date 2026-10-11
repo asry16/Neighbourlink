@@ -1,45 +1,34 @@
 "use client";
 
 import React from "react";
-import { Plus } from "lucide-react";
-import { NAV_ITEMS, type AppTab } from "@/lib/navigation";
+import { LifeBuoy, Plus } from "lucide-react";
+import { useOverlay } from "@/context/overlay-context";
+import { NAV_ITEMS, activeNavId, type NavItem } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { useNavCounts } from "./use-nav-counts";
 
-interface MobileNavProps {
-  activeTab: AppTab;
-  onTabChange: (tab: AppTab) => void;
-  onOpenReportModal: () => void;
-}
+const pick = (id: NavItem["id"]) => NAV_ITEMS.find((n) => n.id === id)!;
 
-const MOBILE_TABS: AppTab[] = ["map", "hazards", "reports", "sos"];
-
-export function MobileNav({ activeTab, onTabChange, onOpenReportModal }: MobileNavProps) {
+/** Mobile bottom navigation: Map · Alerts · Report · Reports · SOS. */
+export function MobileNav() {
+  const { overlay, open, close } = useOverlay();
   const counts = useNavCounts();
-  const items = MOBILE_TABS.map((id) => NAV_ITEMS.find((n) => n.id === id)!);
-  const [left, right] = [items.slice(0, 2), items.slice(2)];
+  const current = activeNavId(overlay);
 
-  const renderItem = (item: (typeof items)[number]) => {
-    const Icon = item.icon;
-    const active = activeTab === item.id;
-    const count = item.countKey ? counts[item.countKey] : 0;
+  const renderItem = (n: NavItem) => {
+    const active = current === n.id;
     return (
       <button
-        key={item.id}
-        onClick={() => onTabChange(item.id)}
+        key={n.id}
+        onClick={() => void (n.id === "map" ? close() : open({ kind: n.id }))}
         aria-current={active ? "page" : undefined}
         className={cn(
-          "relative flex-1 h-full flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors",
+          "relative flex-1 h-full flex flex-col items-center justify-center gap-1 text-[11px] font-medium",
           active ? "text-ink" : "text-ink-subtle"
         )}
       >
-        <span className="relative">
-          <Icon className="size-5" strokeWidth={active ? 2 : 1.6} />
-          {item.tone === "danger" && count > 0 && (
-            <span className="absolute -top-0.5 -right-1 size-2 rounded-full bg-danger ring-2 ring-surface" />
-          )}
-        </span>
-        {item.shortLabel}
+        <n.icon className="size-5" strokeWidth={active ? 2 : 1.6} />
+        {n.shortLabel}
         {active && <span className="absolute top-0 inset-x-6 h-0.5 rounded-b bg-accent" />}
       </button>
     );
@@ -47,20 +36,32 @@ export function MobileNav({ activeTab, onTabChange, onOpenReportModal }: MobileN
 
   return (
     <nav
-      aria-label="Primary"
-      className="md:hidden fixed bottom-0 inset-x-0 z-40 h-[calc(4rem+env(safe-area-inset-bottom))] pb-[env(safe-area-inset-bottom)] border-t border-line bg-surface/90 backdrop-blur-xl flex items-stretch"
+      aria-label="Main navigation"
+      className="md:hidden fixed bottom-0 inset-x-0 z-30 h-[calc(4rem+env(safe-area-inset-bottom))] pb-[env(safe-area-inset-bottom)] border-t border-line bg-surface flex items-stretch"
     >
-      {left.map(renderItem)}
+      {renderItem(pick("map"))}
+      {renderItem(pick("hazards"))}
       <div className="flex-1 grid place-items-center">
         <button
-          onClick={onOpenReportModal}
+          onClick={() => void open({ kind: "report" })}
           aria-label="Report a hazard"
           className="size-12 -mt-6 rounded-2xl bg-ink text-canvas grid place-items-center shadow-[var(--shadow-float)] ring-4 ring-canvas active:scale-95 transition-transform"
         >
           <Plus className="size-5" strokeWidth={2.5} />
         </button>
       </div>
-      {right.map(renderItem)}
+      {renderItem(pick("reports"))}
+      <button
+        onClick={() => void open({ kind: "sos" })}
+        aria-label={counts.sos ? `Request help (SOS). ${counts.sos} open requests` : "Request help (SOS)"}
+        className={cn(
+          "flex-1 h-full flex flex-col items-center justify-center gap-1 text-[11px] font-semibold text-danger",
+          overlay?.kind === "sos" && "bg-danger-soft"
+        )}
+      >
+        <LifeBuoy className="size-5" />
+        SOS
+      </button>
     </nav>
   );
 }

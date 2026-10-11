@@ -3,6 +3,13 @@ import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
+// Extension comes from the validated MIME type, never from the client's
+// filename (which could otherwise store e.g. `.html` under /public).
+const EXTENSION_FOR_MIME: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 
 export async function POST(request: Request) {
@@ -43,7 +50,7 @@ export async function POST(request: Request) {
     const buffer = Buffer.from(bytes);
 
     // Controlled filename with sanitization
-    const ext = file.name.split(".").pop() || "jpg";
+    const ext = EXTENSION_FOR_MIME[file.type];
     const filename = `evid_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
 
     const uploadDir = path.join(process.cwd(), "public", "uploads");

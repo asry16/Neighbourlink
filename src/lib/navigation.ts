@@ -2,40 +2,18 @@ import {
   Map as MapIcon,
   TriangleAlert,
   MessagesSquare,
-  LifeBuoy,
   Shield,
   Building2,
   type LucideIcon,
 } from "lucide-react";
 import type { Role } from "@/context/demo-context";
-
-/**
- * Every screen in the app. `map` renders the geospatial map; the feed tabs
- * render the list view scrolled to their section; the rest are full views.
- */
-export type AppTab =
-  | "map"
-  | "hazards"
-  | "reports"
-  | "sos"
-  | "shelters"
-  | "responder"
-  | "settings";
-
-/** Tabs that render the feed (list view), mapped to their section anchor. */
-export const FEED_SECTIONS: Partial<Record<AppTab, string>> = {
-  hazards: "feed-hazards",
-  reports: "feed-reports",
-  sos: "feed-sos",
-  shelters: "feed-shelters",
-};
-
-export const isFeedTab = (tab: AppTab) => tab in FEED_SECTIONS;
+import type { ListKind, Overlay } from "@/context/overlay-context";
 
 export type NavCountKey = "hazards" | "reports" | "sos";
 
 export interface NavItem {
-  id: AppTab;
+  /** `map` closes overlays; the rest open a browsing drawer. */
+  id: "map" | ListKind;
   label: string;
   shortLabel: string;
   icon: LucideIcon;
@@ -45,10 +23,18 @@ export interface NavItem {
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { id: "map", label: "Live map", shortLabel: "Map", icon: MapIcon },
-  { id: "hazards", label: "Official alerts", shortLabel: "Alerts", icon: TriangleAlert, countKey: "hazards" },
+  { id: "map", label: "Map", shortLabel: "Map", icon: MapIcon },
+  { id: "hazards", label: "Hazard updates", shortLabel: "Alerts", icon: TriangleAlert, countKey: "hazards" },
   { id: "reports", label: "Community reports", shortLabel: "Reports", icon: MessagesSquare, countKey: "reports" },
-  { id: "sos", label: "SOS queue", shortLabel: "SOS", icon: LifeBuoy, countKey: "sos", tone: "danger" },
-  { id: "shelters", label: "Help centres", shortLabel: "Shelters", icon: Building2 },
-  { id: "responder", label: "Responder station", shortLabel: "Station", icon: Shield, roles: ["RESPONDER", "ADMIN"] },
+  { id: "help", label: "Help centres", shortLabel: "Help", icon: Building2 },
+  { id: "responder", label: "SOS queue", shortLabel: "Queue", icon: Shield, countKey: "sos", tone: "danger", roles: ["RESPONDER", "ADMIN"] },
 ];
+
+/** Which nav item is "current" for the open overlay (details → its list). */
+export function activeNavId(overlay: Overlay | null): NavItem["id"] | null {
+  if (!overlay) return "map";
+  if (overlay.kind === "details") return overlay.from ?? null;
+  if (overlay.kind === "hazards" || overlay.kind === "reports" || overlay.kind === "help" || overlay.kind === "responder")
+    return overlay.kind;
+  return null;
+}

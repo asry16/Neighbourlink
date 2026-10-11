@@ -127,3 +127,37 @@ export function manualLocationHTML() {
       <div class="size-4 rounded-full bg-ink ring-[3px] ring-white shadow-[0_2px_8px_rgb(0_0_0/0.35)]"></div>
     </div>`;
 }
+
+/** "View details" button for a brief popup. Wired up by `wireDetailsButton`. */
+export function detailsButtonHTML(id: string, label = "View details") {
+  return `<button type="button" data-details="${esc(id)}" class="mt-3 w-full h-10 rounded-lg bg-ink text-canvas text-[13px] font-medium">${esc(label)}</button>`;
+}
+
+/** Attach the click handler each time the popup opens (its DOM is recreated). */
+export function wireDetailsButton(
+  popup: { on: (type: "open", fn: () => void) => unknown; getElement: () => HTMLElement | undefined; remove: () => unknown },
+  id: string,
+  onOpen: (id: string) => void
+) {
+  popup.on("open", () => {
+    const btn = popup.getElement()?.querySelector<HTMLButtonElement>(`[data-details]`);
+    if (btn) {
+      btn.onclick = () => {
+        popup.remove();
+        onOpen(id);
+      };
+      btn.focus({ preventScroll: true });
+    }
+  });
+}
+
+/** Pin used while choosing a location for a form. */
+export function pickPinHTML() {
+  return `
+    <div class="flex flex-col items-center cursor-grab active:cursor-grabbing" role="img" aria-label="Selected location">
+      <svg width="34" height="44" viewBox="0 0 34 44" class="drop-shadow-[0_4px_8px_rgb(0_0_0/0.35)]">
+        <path d="M17 43s15-14.6 15-26A15 15 0 0 0 2 17c0 11.4 15 26 15 26Z" class="fill-danger" stroke="white" stroke-width="2.5"/>
+        <circle cx="17" cy="17" r="5.5" fill="white"/>
+      </svg>
+    </div>`;
+}

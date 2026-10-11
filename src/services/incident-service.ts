@@ -11,6 +11,7 @@ export interface CreateIncidentInput {
   observedAt: Date;
   reporterId: string;
   photoUrl?: string;
+  evidence?: { fileUrl: string; fileName: string; mimeType: string; sizeBytes: number }[];
 }
 
 export class IncidentService {
@@ -105,6 +106,25 @@ export class IncidentService {
       },
     });
 
+    // Attach uploaded photos to the report and its initial observation.
+    if (input.evidence?.length) {
+      await prisma.evidence.createMany({
+        data: input.evidence.map((e) => ({
+          ...e,
+          incidentId: incident.id,
+          observationId: incident.observations[0]?.id,
+        })),
+      });
+    }
+    const created = await prisma.incident.findUniqueOrThrow({
+      where: { id: incident.id },
+      include: {
+        reporter: { select: { id: true, name: true, role: true } },
+        observations: true,
+        evidence: true,
+      },
+    });
+
     // Record audit event
     await prisma.auditEvent.create({
       data: {
@@ -116,7 +136,7 @@ export class IncidentService {
       },
     });
 
-    return incident;
+    return created;
   }
 
   /**

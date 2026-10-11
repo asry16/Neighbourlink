@@ -3,7 +3,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useSyncExternalStore } from "react";
 import { INITIAL_INCIDENTS, INITIAL_SOS_REQUESTS, type DemoIncident, type DemoSOS } from "@/lib/demo-data";
 import type { BasemapType } from "@/lib/map-styles";
-import type { AppTab } from "@/lib/navigation";
 import { useLiveLocation, type LiveLocation, type LocationStatus } from "@/lib/use-live-location";
 
 export type Role = "RESIDENT" | "RESPONDER" | "ADMIN";
@@ -167,6 +166,8 @@ export interface NotificationItem {
   id: string;
   title: string;
   body: string;
+  /** Related entity, e.g. "sos:<id>" or "incident:<id>". */
+  link?: string | null;
   type: string;
   read: boolean;
   createdAt: string;
@@ -184,8 +185,6 @@ interface DemoContextType {
   setSelectedIncidentId: (id: string | null) => void;
   isDrawerOpen: boolean;
   setIsDrawerOpen: (open: boolean) => void;
-  activeTab: AppTab;
-  setActiveTab: (tab: AppTab) => void;
   liveLocation: LiveLocation | null;
   locationStatus: LocationStatus;
   locationError: string | null;
@@ -263,7 +262,6 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
   });
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<AppTab>("map");
   const live = useLiveLocation();
   const [is3D, setIs3D] = useState(false);
   const [notificationCount, setNotificationCount] = useState(3);
@@ -295,6 +293,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
             reporterName: item.reporter?.name || "Citizen Reporter",
             observedAt: item.observedAt,
             createdAt: item.createdAt,
+            photoUrls: (item.evidence ?? []).map((e: { fileUrl: string }) => e.fileUrl),
           }));
           setIncidents(formatted);
         }
@@ -528,8 +527,6 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         setSelectedIncidentId,
         isDrawerOpen,
         setIsDrawerOpen,
-        activeTab,
-        setActiveTab,
         liveLocation: live.location,
         locationStatus: live.status,
         locationError: live.error,

@@ -52,3 +52,18 @@ export const formatDateTime = (iso: string) =>
     hour: "2-digit",
     minute: "2-digit",
   });
+
+/** "just now", "25 min ago", "3 h ago", "2 days ago". */
+export function timeAgo(iso: string, now = Date.now()) {
+  const mins = Math.round((now - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 48) return `${hours} h ago`;
+  return `${Math.round(hours / 24)} days ago`;
+}
+
+/** Older than this, an update is flagged as possibly out of date. */
+export const STALE_AFTER_HOURS = 24;
+export const isStale = (iso: string, now = Date.now()) =>
+  now - new Date(iso).getTime() > STALE_AFTER_HOURS * 3600_000;
