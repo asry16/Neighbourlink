@@ -17,6 +17,31 @@ Neighbourlink connects citizens, community observers, and registered disaster re
 
 ---
 
+## 🛡️ Authorization with Cedar (AWS open source)
+
+Every permission decision in Neighbourlink is made by **[Cedar](https://www.cedarpolicy.com)**, AWS's open-source authorization policy language, running in-process via [`@cedar-policy/cedar-wasm`](https://www.npmjs.com/package/@cedar-policy/cedar-wasm). No AWS account is needed.
+
+The rules live in one readable file, [`src/authz/policies.ts`](src/authz/policies.ts):
+
+| Policy | What it enforces |
+|---|---|
+| `responders-see-exact-sos` | Only responders and admins see exact SOS coordinates and callback numbers; everyone else gets a ~1 km blurred area |
+| `requester-sees-own-sos` | People always see their own SOS in full |
+| `responders-handle-sos` | Only responders can acknowledge an SOS or post progress updates |
+| `close-sos` | Responders close cases; the requester may confirm they're safe |
+| `no-self-corroboration` (forbid) | Corroboration must come from someone other than the reporter |
+| `no-corroborating-resolved` (forbid) | Resolved reports can't be pushed back to active |
+| `admins-publish-official-hazards` | Only admins can publish official warnings, which outrank everything else |
+
+[`src/authz/cedar.ts`](src/authz/cedar.ts) builds the Cedar request (principal, action, resource and entities) and **fails closed**: any evaluation error is a deny. The services (`sos-service.ts`, `incident-service.ts`) and the hazards API call `authorize()` instead of hand-written role checks, and the ids of the deciding policies come back as reasons (for example a denied corroboration names `no-self-corroboration`).
+
+```bash
+# Policy decisions are covered by tests
+npx vitest run tests/cedar-policies.test.ts
+```
+
+---
+
 ## 🚀 Quick Start Guide
 
 ### 1. Prerequisites

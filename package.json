@@ -16,6 +16,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@cedar-policy/cedar-wasm": "^4.13.0",
     "@prisma/client": "^6.19.3",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.3",
