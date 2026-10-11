@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { PhoneCall, Bell, ChevronDown, Check, Settings2, LogOut } from "lucide-react";
 import { useDemo, type Role } from "@/context/demo-context";
 import { useOverlay } from "@/context/overlay-context";
@@ -100,8 +100,36 @@ export function TopBar({ onOpenEmergency }: { onOpenEmergency: () => void }) {
     void open({ kind: "details", id });
   };
 
+  const [authErrorMsg, setAuthErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const err = params.get("auth_error");
+      if (err) {
+        setAuthErrorMsg(decodeURIComponent(err));
+        const url = new URL(window.location.href);
+        url.searchParams.delete("auth_error");
+        window.history.replaceState({}, "", url.pathname + (url.search ? url.search : ""));
+      }
+    }
+  }, []);
+
   return (
     <header className="shrink-0 border-b border-line bg-surface pt-[env(safe-area-inset-top)] relative z-50">
+      {authErrorMsg && (
+        <div className="bg-danger/10 border-b border-danger/20 text-danger px-4 py-2 text-xs flex items-center justify-between">
+          <span className="truncate">
+            <strong>Sign-in notice:</strong> {authErrorMsg}
+          </span>
+          <button
+            onClick={() => setAuthErrorMsg(null)}
+            className="text-danger font-semibold hover:underline ml-3 shrink-0"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <div className="h-14 md:h-16 px-2 md:px-4 flex items-center gap-1 md:gap-2">
         <div className="flex-1 min-w-0">
           <Search />

@@ -11,8 +11,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ success: true, data: sosRequests });
   } catch (error: any) {
     console.error("GET /api/sos failed:", error);
+    const message = process.env.NODE_ENV === "production" ? "Failed to fetch SOS requests" : (error.message || "Failed to fetch SOS requests");
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch SOS requests" },
+      { success: false, error: message },
       { status: 500 }
     );
   }
@@ -53,8 +54,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, data: sos }, { status: 201 });
   } catch (error: any) {
     console.error("POST /api/sos failed:", error);
+    const message = process.env.NODE_ENV === "production" ? "Failed to broadcast SOS" : (error.message || "Failed to broadcast SOS");
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to broadcast SOS" },
+      { success: false, error: message },
       { status: 500 }
     );
   }

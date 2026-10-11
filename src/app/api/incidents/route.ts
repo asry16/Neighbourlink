@@ -7,8 +7,9 @@ export async function GET() {
     return NextResponse.json({ success: true, data: incidents });
   } catch (error: any) {
     console.error("GET /api/incidents failed:", error);
+    const message = process.env.NODE_ENV === "production" ? "Failed to fetch incidents" : (error.message || "Failed to fetch incidents");
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch incidents" },
+      { success: false, error: message },
       { status: 500 }
     );
   }
@@ -71,8 +72,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, data: incident }, { status: 201 });
   } catch (error: any) {
     console.error("POST /api/incidents failed:", error);
+    const message = process.env.NODE_ENV === "production" ? "Failed to create incident" : (error.message || "Failed to create incident");
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to create incident" },
+      { success: false, error: message },
       { status: 500 }
     );
   }
