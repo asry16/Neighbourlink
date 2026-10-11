@@ -47,6 +47,7 @@ import { useEscape } from "@/components/ui/a11y";
 import { formatAccuracy } from "@/lib/use-live-location";
 import { WalkMode, type WalkPoi } from "./walk-mode";
 import { WalkStartDialog, type WalkStart } from "./walk-start-dialog";
+import { MapPresence } from "./map-presence";
 
 const INCIDENT_PIN_BG: Record<string, string> = {
   UNVERIFIED: "bg-amber-500",
@@ -120,6 +121,8 @@ export function GeospatialMap() {
   const openDetailsRef = useRef<(id: string) => void>(() => {});
 
   const [mapLoaded, setMapLoaded] = useState(false);
+  /** The map instance for children that render into it (set once loaded). */
+  const [mapObj, setMapObj] = useState<maplibregl.Map | null>(null);
   const [webGlSupported, setWebGlSupported] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     try {
@@ -346,6 +349,7 @@ export function GeospatialMap() {
 
       m.on("load", () => {
         setMapLoaded(true);
+        setMapObj(m);
         setBearing(Math.round(m.getBearing()));
         setIs3D(m.getPitch() >= 20);
         updateVisibleCount();
@@ -971,8 +975,17 @@ export function GeospatialMap() {
         </div>
       )}
 
-      {/* Status (top-left): location, picking, 3D limitations */}
+      {/* Status (top-left): who's online, location, picking, 3D limitations */}
       <div className="absolute top-3 left-3 md:top-4 md:left-4 z-20 flex flex-col items-start gap-2 max-w-[calc(100%-5.5rem)] md:max-w-sm">
+        {mapObj && !walk && !pickingLocation && (
+          <MapPresence
+            map={mapObj}
+            name={currentUser.name}
+            liveLocation={liveLocation}
+            locationStatus={locationStatus}
+            startLiveLocation={startLiveLocation}
+          />
+        )}
 
         {locationStatus === "requesting" && (
           <div className={`${chip} px-3 text-ink-muted`} role="status">

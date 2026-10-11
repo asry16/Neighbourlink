@@ -1,7 +1,9 @@
-import { NextResponse } from "next/server";
+import { connection, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 
 export async function GET() {
+  // Per-request: the session comes from the caller's cookies, never a build-time snapshot.
+  await connection();
   try {
     const user = await getSessionUser();
     return NextResponse.json({ success: true, user });

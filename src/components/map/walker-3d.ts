@@ -3,12 +3,11 @@
 import * as maplibregl from "maplibre-gl";
 import type * as THREE_NS from "three";
 import type { PrecipKind } from "@/lib/weather";
+import { characterHeightPx } from "@/lib/avatar";
 
 /** Shared with walk-mode so it can re-add the layer after a style swap. */
 export const WALKER_LAYER_ID = "nl-walkers-3d";
 
-/** Rendered height on screen, so figures stay readable at any zoom. */
-const TARGET_HEIGHT_PX = 90;
 const BODY_HEIGHT_M = 1.75;
 /** Characters farther than this from the camera centre aren't drawn. */
 const DRAW_RADIUS_M = 4000;
@@ -249,7 +248,8 @@ export async function createCrowd3D(map: maplibregl.Map): Promise<Crowd3D> {
       const centre = map.getCenter();
       const o = maplibregl.MercatorCoordinate.fromLngLat(centre, 0);
       const metresPerPx = (40075016.686 * Math.cos((centre.lat * Math.PI) / 180)) / (512 * 2 ** map.getZoom());
-      const exaggeration = Math.max(1, (TARGET_HEIGHT_PX * metresPerPx) / BODY_HEIGHT_M);
+      // Exaggerated to stay visible, but still bigger zoomed in, smaller zoomed out.
+      const exaggeration = Math.max(1, (characterHeightPx(map.getZoom()) * metresPerPx) / BODY_HEIGHT_M);
       const cosLat = Math.cos((centre.lat * Math.PI) / 180);
 
       for (const c of characters.values()) {

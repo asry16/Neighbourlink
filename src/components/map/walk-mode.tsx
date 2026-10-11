@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { createCrowd3D, WALKER_LAYER_ID, type Crowd3D, type WalkerPose } from "./walker-3d";
 import { usePresence } from "./use-presence";
+import { characterHeightPx } from "@/lib/avatar";
 import { EMOTE_LABEL, EMOTE_MS, type Emote, type Walker } from "@/lib/presence-types";
 import { WeatherOverlay } from "./weather-overlay";
 import type { WalkStart } from "./walk-start-dialog";
@@ -310,9 +311,10 @@ export function WalkMode({
       let t = tags.get(id);
       if (!t) {
         const el = nameTag(name, color, isSelf);
-        const marker = new maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, -96] })
+        const marker = new maplibregl.Marker({ element: el, anchor: "bottom" })
           .setLngLat([posRef.current.lng, posRef.current.lat])
           .addTo(map);
+        marker.setOffset([0, -Math.round(characterHeightPx(map.getZoom()) + 6)]);
         t = { marker, el };
         tags.set(id, t);
       }
@@ -367,6 +369,7 @@ export function WalkMode({
     let lastNearbyKey = "";
     let lastHelpKey = "";
     let lastMineSeq = 0;
+    let lastTagLift = 0;
     let mineSince = -Infinity;
 
     const tick = (now: number) => {
@@ -396,6 +399,12 @@ export function WalkMode({
       gaitRef.current = gait;
       const p = presenceRef.current;
       const crowd = crowdRef.current;
+      // Tags sit just above the heads, which grow and shrink with zoom.
+      const tagLift = -Math.round(characterHeightPx(map.getZoom()) + 6);
+      if (tagLift !== lastTagLift) {
+        lastTagLift = tagLift;
+        tags.forEach((t) => t.marker.setOffset([0, tagLift]));
+      }
       crowd?.upsert(SELF_ID, { ...posRef.current, heading: headingRef.current, gait }, p.myColor);
       const selfTag = tagFor(SELF_ID, start.name, p.myColor, true);
       selfTag.marker.setLngLat([posRef.current.lng, posRef.current.lat]);

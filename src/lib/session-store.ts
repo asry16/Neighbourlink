@@ -31,7 +31,8 @@ export function createSessionStore<T>(key: string, fallback: T, isValid: (v: unk
     return value;
   };
 
-  const set = (value: T) => {
+  const set = (next: T | ((prev: T) => T)) => {
+    const value = typeof next === "function" ? (next as (prev: T) => T)(read()) : next;
     try {
       sessionStorage.setItem(key, JSON.stringify(value));
     } catch {
