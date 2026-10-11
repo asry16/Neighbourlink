@@ -86,7 +86,7 @@ async function main() {
       name: "Priya Banerjee",
       email: "priya.kolkata@example.org",
       role: "RESIDENT",
-      phone: "+91 98301 23456",
+      phone: "+91 00000 00101",
     },
   });
 
@@ -96,7 +96,7 @@ async function main() {
       name: "Debashis Roy",
       email: "debashis.roy@example.org",
       role: "RESIDENT",
-      phone: "+91 98302 34567",
+      phone: "+91 00000 00102",
     },
   });
 
@@ -106,7 +106,7 @@ async function main() {
       name: "Sourav Mukherjee",
       email: "sourav.m@example.org",
       role: "RESIDENT",
-      phone: "+91 98303 45678",
+      phone: "+91 00000 00103",
     },
   });
 
@@ -114,9 +114,9 @@ async function main() {
     data: {
       id: "usr-responder-1",
       name: "Sub-Inspector A. Sen",
-      email: "a.sen@kdrrt.gov.in",
+      email: "responder.demo@example.org",
       role: "RESPONDER",
-      phone: "+91 98309 87654",
+      phone: "+91 00000 00104",
       responderOrgId: kdrrt.id,
     },
   });
@@ -125,9 +125,9 @@ async function main() {
     data: {
       id: "usr-admin-1",
       name: "Civic Command Admin",
-      email: "control@neighbourlink.local",
+      email: "admin.demo@example.org",
       role: "ADMIN",
-      phone: "+91 98300 00112",
+      phone: "+91 00000 00105",
     },
   });
 
@@ -355,7 +355,7 @@ async function main() {
       peopleCount: 2,
       description:
         "Elderly citizen and caretaker stranded on ground floor flat. Water entered living room up to 1.5 ft. Power cut off.",
-      contactPhone: "+91 98301 23456",
+      contactPhone: "+91 00000 00101",
       status: "REQUESTED",
       assignedOrgId: kdrrt.id,
     },
@@ -376,7 +376,7 @@ async function main() {
       peopleCount: 1,
       description:
         "Oxygen concentrator battery failing due to prolonged power cut in inundated lane.",
-      contactPhone: "+91 98302 34567",
+      contactPhone: "+91 00000 00102",
       status: "ACKNOWLEDGED",
       assignedOrgId: kdrrt.id,
     },

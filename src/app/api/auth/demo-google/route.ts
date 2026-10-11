@@ -1,14 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { upsertGoogleUser, createSessionToken, setSessionCookie } from "@/lib/auth";
 
-export async function POST(request: NextRequest) {
+/**
+ * Local-development shortcut that signs in a fixed demo resident without
+ * Google. Disabled in production: it would otherwise let anyone sign in as
+ * any email address.
+ */
+export async function POST(_request: NextRequest) {
+  if (process.env.NODE_ENV !== "development") {
+    return NextResponse.json({ success: false, error: "Not found" }, { status: 404 });
+  }
   try {
-    const body = await request.json().catch(() => ({}));
-    const email = body.email || "roy.asmita0399@gmail.com";
-    const name = body.name || "Asmita Roy";
-    const picture =
-      body.picture ||
-      "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80";
+    const email = "demo.resident@example.org";
+    const name = "Demo Resident";
+    const picture = undefined;
 
     const user = await upsertGoogleUser({
       id: `google-sim-${Date.now()}`,

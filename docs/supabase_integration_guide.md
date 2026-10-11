@@ -36,7 +36,7 @@ Neighbourlink is configured with a hybrid database and authentication architectu
 ---
 
 ### Step 3: Add Credentials to `.env`
-Open your local [`.env`](file:///Users/asmitas_mac/Developer/neighbourhood/.env) file and add the credentials:
+Open your local `.env` file and add the credentials:
 
 ```env
 # 1. Supabase API Credentials (Project Settings -> API)
@@ -60,7 +60,7 @@ You have two convenient options to create the tables in Supabase:
 #### Option A: 1-Click SQL Editor (Recommended)
 1. In your Supabase Dashboard, open **SQL Editor**.
 2. Click **New Query**.
-3. Copy and paste the contents of [`prisma/supabase_schema.sql`](file:///Users/asmitas_mac/Developer/neighbourhood/prisma/supabase_schema.sql).
+3. Copy and paste the contents of [`prisma/supabase_schema.sql`](../prisma/supabase_schema.sql).
 4. Click **Run**.
 *(This automatically creates all 13 tables, foreign keys, and adds an auto-sync trigger that mirrors Supabase Auth sign-ups into the application `User` table!)*
 

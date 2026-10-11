@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { exchangeGoogleCode, upsertGoogleUser, createSessionToken, setSessionCookie } from "@/lib/auth";
+import { safeRedirectPath } from "@/lib/safe-redirect";
 
 export async function GET(request: NextRequest) {
   const origin = request.nextUrl.origin;
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
 
     await setSessionCookie(token);
 
-    const targetUrl = state.startsWith("/") ? state : "/";
+    const targetUrl = safeRedirectPath(state);
     return NextResponse.redirect(new URL(`${targetUrl}?auth_success=1`, origin));
   } catch (err: any) {
     console.error("Google OAuth callback exchange failed:", err);
