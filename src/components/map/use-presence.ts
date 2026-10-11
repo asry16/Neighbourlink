@@ -45,7 +45,8 @@ export function usePresence({
 }: {
   name: string;
   place: string;
-  getPose: () => WalkerPose;
+  /** Current pose to share, or null to stay hidden (ghost mode / no fix). */
+  getPose: () => WalkerPose | null;
 }) {
   const [myId] = useState(tabWalkerId);
   const myColor = colorFor(myId);
@@ -71,9 +72,27 @@ export function usePresence({
     let inFlight = false;
     let lastSent = 0;
     let last: WalkerPose | null = null;
+    let visible = false;
+    const leave = () => {
+      try {
+        navigator.sendBeacon?.("/api/presence/leave", JSON.stringify({ id: myId }));
+      } catch {
+        /* the server drops stale walkers anyway */
+      }
+    };
     const timer = setInterval(() => {
       if (inFlight) return;
       const pose = getPoseRef.current();
+      if (!pose) {
+        // Went hidden: tell the server now rather than waiting to go stale.
+        if (visible) {
+          visible = false;
+          last = null;
+          leave();
+        }
+        return;
+      }
+      visible = true;
       const now = Date.now();
       const e = emoteRef.current;
       if (e.emote && now > e.until) e.emote = null;
@@ -112,13 +131,6 @@ export function usePresence({
         });
     }, SEND_EVERY_MS);
 
-    const leave = () => {
-      try {
-        navigator.sendBeacon?.("/api/presence/leave", JSON.stringify({ id: myId }));
-      } catch {
-        /* the server drops stale walkers anyway */
-      }
-    };
     window.addEventListener("pagehide", leave);
     return () => {
       clearInterval(timer);

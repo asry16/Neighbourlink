@@ -295,3 +295,96 @@
   color: var(--nl-ink-muted) !important;
 }
 
+
+/* Snap Map-style avatars; size comes from --nl-avatar, set from map zoom. */
+.nl-avatar-pin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+}
+.nl-avatar-face {
+  position: relative;
+  width: var(--nl-avatar, 48px);
+  height: var(--nl-avatar, 48px);
+  border-radius: 9999px;
+  background: #fff;
+  box-shadow: 0 0 0 3px var(--ring, #fff), 0 8px 16px -6px rgb(0 0 0 / 0.5);
+  transition: width 150ms ease, height 150ms ease, transform 150ms ease;
+}
+.nl-avatar-face::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -7px;
+  width: 12px;
+  height: 12px;
+  transform: translateX(-50%) rotate(45deg);
+  background: var(--ring, #fff);
+  border-radius: 2px;
+  z-index: -1;
+}
+.nl-avatar-face svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 9999px;
+}
+.nl-avatar-pin:hover .nl-avatar-face {
+  transform: translateY(-2px) scale(1.05);
+}
+.nl-avatar-name {
+  margin-top: 9px;
+  max-width: 9rem;
+  padding: 1px 8px;
+  border-radius: 9999px;
+  background: rgb(0 0 0 / 0.68);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nl-avatars-compact .nl-avatar-name {
+  display: none;
+}
+.nl-avatar-pin.is-ghost .nl-avatar-face {
+  opacity: 0.55;
+}
+.nl-avatar-badge {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  border-radius: 9999px;
+  background: #fff;
+  font-size: 12px;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
+}
+/* Plain CSS outranks Tailwind's layered .hidden, so hide empty badges here. */
+.nl-avatar-badge:empty {
+  display: none;
+}
+.nl-avatar-badge.is-danger {
+  background: #dc2626;
+  color: #fff;
+}
+.nl-avatar-pin.is-help .nl-avatar-face {
+  box-shadow: 0 0 0 3px #dc2626, 0 0 0 8px rgb(220 38 38 / 0.35), 0 8px 16px -6px rgb(0 0 0 / 0.5);
+  animation: nl-help-pulse 1.2s ease-in-out infinite;
+}
+@keyframes nl-help-pulse {
+  50% {
+    box-shadow: 0 0 0 3px #dc2626, 0 0 0 14px rgb(220 38 38 / 0.15), 0 8px 16px -6px rgb(0 0 0 / 0.5);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nl-avatar-pin.is-help .nl-avatar-face {
+    animation: none;
+  }
+}
