@@ -189,20 +189,20 @@ export function AuthModal({ open, onClose }: AuthModalProps) {
               <span>{loading ? "Connecting to Supabase Google OAuth..." : "Continue with Google"}</span>
             </button>
 
-            {/* Quick Access for Verified Member */}
-            <div className="pt-2 border-t border-line space-y-2">
-              <div className="text-[12px] font-medium text-ink-subtle flex items-center justify-between">
-                <span>Verified Civic Identity</span>
+            {/* Local development only: sign in as a generic demo resident without Google */}
+            {process.env.NODE_ENV === "development" && (
+              <div className="pt-2 border-t border-line space-y-2">
+                <div className="text-[12px] font-medium text-ink-subtle">Local development</div>
+                <button
+                  onClick={() => handleDemoSignIn()}
+                  disabled={loading}
+                  className="w-full h-10 px-3 rounded-lg border border-accent/30 bg-accent-soft hover:bg-accent-soft/80 text-accent font-medium text-[12.5px] flex items-center justify-center gap-2 transition-colors"
+                >
+                  <CheckCircle2 className="size-3.5" />
+                  <span>Continue as Demo Resident</span>
+                </button>
               </div>
-              <button
-                onClick={() => handleDemoSignIn("roy.asmita0399@gmail.com", "Asmita Roy")}
-                disabled={loading}
-                className="w-full h-10 px-3 rounded-lg border border-accent/30 bg-accent-soft hover:bg-accent-soft/80 text-accent font-medium text-[12.5px] flex items-center justify-center gap-2 transition-colors"
-              >
-                <CheckCircle2 className="size-3.5" />
-                <span>Continue as Asmita Roy (roy.asmita0399@gmail.com)</span>
-              </button>
-            </div>
+            )}
 
             <div className="pt-2 border-t border-line text-[11.5px] text-ink-muted flex items-start gap-2">
               <ShieldCheck className="size-4 shrink-0 text-ink-subtle mt-0.5" />

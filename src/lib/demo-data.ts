@@ -248,7 +248,7 @@ export const INITIAL_SOS_REQUESTS: DemoSOS[] = [
     peopleCount: 2,
     description:
       "Elderly citizen and caretaker stranded on ground floor flat. Water entered living room up to 1.5 ft. Power cut off.",
-    contactPhone: "+91 98311 99882",
+    contactPhone: "+91 00000 00106",
     status: "REQUESTED",
     requesterName: "Dr. B. K. Mukherjee",
     createdAt: new Date(Date.now() - 1800000).toISOString(),
