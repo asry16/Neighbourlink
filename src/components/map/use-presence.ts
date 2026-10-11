@@ -56,6 +56,8 @@ export function usePresence({
   const [connected, setConnected] = useState(false);
   const emoteRef = useRef<{ emote: Emote | null; seq: number; until: number }>({ emote: null, seq: 0, until: 0 });
   const [myEmote, setMyEmote] = useState<{ emote: Emote; seq: number } | null>(null);
+  /** A call for help stays up until cancelled, unlike a wave. */
+  const [askingHelp, setAskingHelp] = useState(false);
   const forceSend = useRef(false);
   const identity = useRef({ name, place });
   const getPoseRef = useRef(getPose);
@@ -155,16 +157,26 @@ export function usePresence({
 
   const emote = useCallback((e: Emote) => {
     const cur = emoteRef.current;
-    emoteRef.current = { emote: e, seq: cur.seq + 1, until: Date.now() + EMOTE_MS };
+    // "help" toggles: pressing it again cancels the call.
+    if (e === "help" && cur.emote === "help") {
+      emoteRef.current = { emote: null, seq: cur.seq + 1, until: 0 };
+      setAskingHelp(false);
+      setMyEmote(null);
+    } else {
+      const until = e === "help" ? Number.POSITIVE_INFINITY : Date.now() + EMOTE_MS;
+      emoteRef.current = { emote: e, seq: cur.seq + 1, until };
+      setAskingHelp(e === "help");
+      setMyEmote({ emote: e, seq: cur.seq + 1 });
+    }
     forceSend.current = true;
-    setMyEmote({ emote: e, seq: cur.seq + 1 });
   }, []);
 
-  /** Whether a walker's emote is still showing. */
+  /** Whether a walker's emote is still showing (a help call lasts until cancelled). */
   const emoteActive = useCallback(
-    (w: Walker) => !!w.emote && Date.now() + clockOffsetRef.current - w.emoteAt < EMOTE_MS,
+    (w: Walker) =>
+      !!w.emote && (w.emote === "help" || Date.now() + clockOffsetRef.current - w.emoteAt < EMOTE_MS),
     []
   );
 
-  return { myId, myColor, others, othersRef, connected, emote, myEmote, emoteActive };
+  return { myId, myColor, others, othersRef, connected, emote, myEmote, askingHelp, emoteActive };
 }

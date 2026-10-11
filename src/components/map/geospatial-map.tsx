@@ -140,7 +140,9 @@ export function GeospatialMap() {
   const appliedStyleRef = useRef<string | null>(null);
   const pendingFlyRef = useRef<maplibregl.FlyToOptions | null>(null);
   const [visibleIncidentCount, setVisibleIncidentCount] = useState<number | null>(null);
-  const [walk, setWalk] = useState<{ map: maplibregl.Map; start: WalkStart } | null>(null);
+  // A walk belongs to the area it started in; picking another area ends it.
+  const [walkState, setWalk] = useState<{ map: maplibregl.Map; start: WalkStart; localityId: string } | null>(null);
+  const walk = walkState && walkState.localityId === currentLocality.id ? walkState : null;
   const [choosingWalkStart, setChoosingWalkStart] = useState(false);
 
   // Compute visible incidents within current map viewport
@@ -846,7 +848,8 @@ export function GeospatialMap() {
     if (!m || !mapLoaded) return;
     const desktop = window.matchMedia("(min-width: 768px)").matches;
     const right = drawerOpen && desktop ? (window.matchMedia("(min-width: 1024px)").matches ? 420 : 380) : 0;
-    m.easeTo({ padding: { top: 0, bottom: 0, left: 0, right }, duration: 300 });
+    // Only the right edge belongs to the drawer; walk mode owns the top.
+    m.easeTo({ padding: { ...m.getPadding(), right }, duration: 300 });
   }, [drawerOpen, mapLoaded]);
 
   // Walk mode first asks where to start (GPS or a typed city).
@@ -857,7 +860,7 @@ export function GeospatialMap() {
   const beginWalk = (start: WalkStart) => {
     const m = map.current;
     setChoosingWalkStart(false);
-    if (m) setWalk({ map: m, start });
+    if (m) setWalk({ map: m, start, localityId: currentLocality.id });
   };
   const mapCentre = () => {
     const c = map.current?.getCenter();
@@ -1023,7 +1026,7 @@ export function GeospatialMap() {
           </div>
         )}
 
-        {is3D && mapLoaded && !capabilities.buildings && !walk && (
+        {is3D && mapLoaded && !capabilities.buildings && !walk && !drawerOpen && (
           <div className={`${chip} px-3 text-ink-muted`} role="status">
             3D buildings aren&apos;t available on this basemap
           </div>

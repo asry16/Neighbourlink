@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import * as maplibregl from "maplibre-gl";
 import {
   ArrowBigDown,
@@ -194,6 +195,17 @@ export function WalkMode({
     presenceRef.current = presence;
   }, [presence]);
   const [helpCall, setHelpCall] = useState<HelpCall | null>(null);
+  // Weather draws inside the map, just above the canvas and below markers,
+  // so name tags and SOS bubbles stay readable through rain and fog.
+  const [weatherHost] = useState(() => {
+    const host = document.createElement("div");
+    host.className = "absolute inset-0 pointer-events-none";
+    return host;
+  });
+  useEffect(() => {
+    map.getCanvas().insertAdjacentElement("afterend", weatherHost);
+    return () => weatherHost.remove();
+  }, [map, weatherHost]);
   /** Throttled copy of the position for rendering distances. */
   const [myPos, setMyPos] = useState({ lat: start.lat, lng: start.lng });
   const [peopleOpen, setPeopleOpen] = useState(false);
@@ -331,6 +343,10 @@ export function WalkMode({
     // Arrow keys belong to the walker now, and dragging would leave it off-centre.
     map.keyboard.disable();
     map.dragPan.disable();
+    // Frame the walker low on screen so the street ahead (and other walkers)
+    // isn't hidden behind the status cards.
+    const originalPadding = map.getPadding();
+    map.setPadding({ ...originalPadding, top: Math.round(map.getContainer().clientHeight * 0.42) });
     // Fly when the start is far away (e.g. another city), ease when it's close.
     const c = map.getCenter();
     const far = distanceM(c.lat, c.lng, start.lat, start.lng) > 30_000;
@@ -384,7 +400,10 @@ export function WalkMode({
       const selfTag = tagFor(SELF_ID, start.name, p.myColor, true);
       selfTag.marker.setLngLat([posRef.current.lng, posRef.current.lat]);
       const mine = p.myEmote;
-      setTagEmote(selfTag.el, mine && performance.now() - mineSince < EMOTE_MS ? mine.emote : null);
+      setTagEmote(
+        selfTag.el,
+        mine && (mine.emote === "help" || performance.now() - mineSince < EMOTE_MS) ? mine.emote : null
+      );
       if (mine && mine.seq !== lastMineSeq) {
         lastMineSeq = mine.seq;
         mineSince = performance.now();
@@ -482,6 +501,7 @@ export function WalkMode({
       tags.forEach((t) => t.marker.remove());
       map.keyboard.enable();
       map.dragPan.enable();
+      map.setPadding(originalPadding);
       map.setSky(originalSky ?? {});
     };
     // Mounted once per walk; `start` is the spawn point only.
@@ -567,23 +587,29 @@ export function WalkMode({
     .sort((a, b) => a.d - b.d);
   const nearbyCount = here.filter((x) => x.d <= NEARBY_WALKERS_M).length;
 
-  const emoteButton = (e: Emote, key: string) => (
+  const emoteButton = (e: Emote, key: string) => {
+    const on = e === "help" && presence.askingHelp;
+    const label = on ? "Cancel help request" : EMOTE_LABEL[e].text;
+    return (
     <button
       type="button"
       onClick={() => presence.emote(e)}
-      aria-label={`${EMOTE_LABEL[e].text} (key ${key})`}
-      title={`${EMOTE_LABEL[e].text} · key ${key}`}
+      aria-pressed={e === "help" ? on : undefined}
+      aria-label={`${label} (key ${key})`}
+      title={`${label} · key ${key}`}
       className={`size-12 md:size-11 grid place-items-center rounded-xl text-[20px] transition-colors ${
-        e === "help" ? "hover:bg-red-500/15" : "hover:bg-surface-2"
+        on ? "bg-red-600 ring-2 ring-red-300 animate-pulse" : e === "help" ? "hover:bg-red-500/15" : "hover:bg-surface-2"
       }`}
     >
       {EMOTE_LABEL[e].icon}
     </button>
-  );
+    );
+  };
 
   return (
     <>
-      {scene && <WeatherOverlay scene={scene} getBearing={getBearing} smog={smog} />}
+      {scene &&
+        createPortal(<WeatherOverlay scene={scene} getBearing={getBearing} smog={smog} />, weatherHost)}
 
       {/* Status, weather and proximity (top-centre) */}
       <div className="absolute top-3 md:top-4 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 w-[min(27rem,calc(100%-7rem))] pointer-events-none">
@@ -796,8 +822,8 @@ export function WalkMode({
         )}
       </div>
 
-      {/* D-pad (bottom-centre) */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 animate-rise">
+      {/* Controls (bottom-right), clear of the character in the centre */}
+      <div className="absolute bottom-4 right-3 md:right-4 z-30 flex flex-col items-end gap-2 animate-rise">
         <div className="flex items-end gap-2">
         <div role="group" aria-label="Emotes" className="nl-glass rounded-2xl p-1.5 flex flex-col gap-1 select-none">
           {emoteButton("wave", "1")}

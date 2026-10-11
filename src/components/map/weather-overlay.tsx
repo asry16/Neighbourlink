@@ -294,7 +294,7 @@ export function WeatherOverlay({
   const tint = "transition-opacity duration-[1500ms] absolute inset-0";
 
   return (
-    <div className="absolute inset-0 z-10 pointer-events-none" aria-hidden="true">
+    <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
       {/* Night */}
       <div
         className={tint}
