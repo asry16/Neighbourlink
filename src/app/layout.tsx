@@ -3,6 +3,7 @@ import { Bricolage_Grotesque, Instrument_Sans, JetBrains_Mono } from "next/font/
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { DemoProvider } from "@/context/demo-context";
+import { Analytics } from "@vercel/analytics/next";
 
 const heading = Bricolage_Grotesque({
   variable: "--font-heading",
@@ -60,6 +61,7 @@ export default function RootLayout({
         >
           <DemoProvider>{children}</DemoProvider>
         </ThemeProvider>
+        <Analytics />
       </body>
     </html>
   );
