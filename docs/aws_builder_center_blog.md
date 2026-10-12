@@ -1,82 +1,137 @@
 # Building Neighbourlink: Fine-Grained Disaster Response Authorization with AWS Cedar and Serverless Architecture
 
 *By Asmita Roy*  
-*Published for AWS Builder Center / AWS Community*
+*Target Community: AWS Builder Center / AWS Community Builders*
 
 ---
 
-## Introduction: The High-Stakes Nature of Crisis Coordination
+## Introduction: When Software Becomes Frontline Infrastructure
 
-When monsoons submerge urban corridors or seismic tremors rupture infrastructure, seconds determine outcomes. In emergency disaster response, software ceases to be a luxury—it becomes frontline infrastructure.
+When torrential rains submerge metropolitan avenues, cyclones disrupt power grids, or seismic tremors buckle bridges, standard communication channels quickly collapse. Emergency hotlines become overwhelmed, social media floods with unverified rumors, and stranded civilians struggle to signal their distress.
 
-Over the past months, we designed and built **Neighbourlink**, an open community hazard awareness and crisis coordination platform. Neighbourlink provides real-time flood simulation, geo-targeted hazard tracking, crowdsourced incident reporting, and emergency SOS broadcasting.
+In moments of crisis, software stops being an abstract application—it becomes frontline emergency infrastructure.
 
-However, building software for civilian safety introduces a profound security and privacy dilemma:
+Over the past few months, we built **[Neighbourlink](https://github.com/asry16/Neighbourlink)**: an open, real-time community hazard awareness, flood simulation, and emergency response coordination platform. 
 
-1. **Civilian Privacy vs. Responder Operational Readiness:** When a resident is trapped by rising floodwaters and issues an emergency SOS, the platform captures their exact GPS coordinates, cell phone number, and household status. If this sensitive data is exposed to everyone, bad actors could exploit stranded civilians. But if it is gated behind complex friction, first responders cannot reach them.
-2. **Crowdsource Integrity vs. Misinformation Abuse:** Community corroboration accelerates disaster verification. Yet, rogue actors or panicked users might self-corroborate fake reports or reopen closed disaster events.
-
-In traditional architectures, developers tackle this with nested `if/else` checks and role-based access control (RBAC) scattered across API endpoints. But in high-stress, evolving crisis systems, hardcoded permissions lead to security drift, subtle privilege leaks, and untestable rules.
-
-To solve this, we decoupled our entire authorization layer using **AWS Cedar**—AWS’s open-source, expressive, and formally verifiable policy language. In this article, I will walk you through how we integrated AWS Cedar via WebAssembly into a modern Next.js serverless architecture, backed by AWS cloud services and PostgreSQL.
+In this deep-dive article, I will share:
+1. **The Core Features:** What citizens, community volunteers, and emergency first responders actually experience on the platform.
+2. **The Security Dilemma:** Why traditional Role-Based Access Control (RBAC) fails in high-stakes disaster response.
+3. **The AWS Cedar Integration:** How we used **AWS Cedar**—AWS’s open-source policy language—compiled to WebAssembly to enforce zero-trust, privacy-preserving authorization at sub-millisecond speeds.
+4. **The Cloud Architecture:** How the system integrates with AWS services (Cognito, S3, SQS, SNS) and PostgreSQL.
 
 ---
 
-## The Architectural Blueprint
+## Part 1: What Users Get — The Neighbourlink Feature Suite
 
-Before diving into policies, here is how Neighbourlink is structured across the stack:
+Before diving into policies and code, let’s explore what users experience when they open Neighbourlink on their phones or laptops.
 
 ```
-                          +-------------------------------+
-                          |   Next.js 16 (App Router SSR) |
-                          |   Deployed on AWS / Serverless |
-                          +---------------+---------------+
-                                          |
-                +-------------------------+-------------------------+
-                |                         |                         |
-                v                         v                         v
-       +-----------------+       +-----------------+       +-----------------+
-       |  AWS Cedar Engine|       |  Amazon Cognito |       |    Amazon S3    |
-       |  (@cedar-policy |       |  (User Pools &  |       |  (Presigned URL |
-       |   cedar-wasm)   |       |   Role Groups)  |       | Private Evidence|
-       +-----------------+       +-----------------+       +-----------------+
-                |                         |                         |
-                +-------------------------+-------------------------+
-                                          |
-                                          v
-                         +---------------------------------+
-                         |  PostgreSQL Database (Supabase) |
-                         |   Session & Transaction Poolers |
-                         +---------------------------------+
++-----------------------------------------------------------------------------------+
+|                            NEIGHBOURLINK PLATFORM                                 |
++-----------------------------------------------------------------------------------+
+|  [ Command Map ]         [ Live Hazards ]        [ Flood Risk ]     [ SOS Help ]  |
+|  - 3D Perspective Tilt   - USGS Quakes           - 24h Rain Fall    - 1-Tap SOS   |
+|  - Snap-Style Avatars    - GDACS Cyclones        - Soil Saturation  - Fuzzed Map  |
+|  - Basemap Switcher      - Air Quality (NAQI)    - Honest "No-Data" - Rescue GPS  |
++-----------------------------------------------------------------------------------+
+|  [ Citizen Reporting ]   [ Community Verification ]    [ Responder Station ]      |
+|  - Photo Evidence        - Independent Corroboration   - Boat / Medical Dispatch  |
+|  - Category Pins         - Dispute Resolution          - Callback & Status Track  |
++-----------------------------------------------------------------------------------+
 ```
 
-### Key Pillars:
-- **Authorization Engine:** AWS Cedar (`@cedar-policy/cedar-wasm/nodejs`) evaluating zero-trust policies in sub-millisecond in-memory WASM execution.
-- **Identity & Authentication:** Amazon Cognito / Supabase Auth with Google OAuth 2.0 federation and encrypted session tokens.
-- **Evidence Storage:** Amazon S3 private storage using short-lived presigned PUT/GET URLs for disaster photo evidence.
-- **Database Layer:** Managed PostgreSQL using PgBouncer connection pooling for serverless resilience.
+### 1. Geospatial Command Center with 3D Walkers & Snap-Style Avatars
+- **Dynamic 2D / 3D Perspective Tilt:** Users can toggle between flat orthographic 2D maps and an immersive 55° tilted 3D perspective with real-time compass bearing and pitch controls.
+- **Snap-Style Presence Avatars:** Inspired by Snapchat’s Snap Map, users and emergency volunteers appear with customizable dynamic avatars and animated 3D pedestrian walkers, showing real-time community activity across streets and wards.
+- **Seamless Basemap Switching:** Toggle effortlessly between high-contrast light mode (CARTO Positron), night rescue dark mode (CARTO Dark Matter), MapTiler vector tiles, and Esri Satellite imagery—all without camera jitter, marker drops, or reloads.
+- **Global & Local Geocoded Search:** Instant fuzzy search allows users to fly their camera directly to specific neighborhoods, wards, landmarks, or international regions.
 
 ---
 
-## Why AWS Cedar?
-
-**Cedar** (the foundation behind Amazon Verified Permissions) is purpose-built for fine-grained authorization. Unlike general-purpose languages, Cedar has three characteristics that make it ideal for humanitarian and mission-critical systems:
-
-1. **Default Deny:** If no policy explicitly permits an action, Cedar denies access automatically.
-2. **Explicit Forbid Wins:** A single `forbid` statement immediately supersedes any number of `permit` statements. This makes enforcing anti-abuse boundaries bulletproof.
-3. **Decoupled & Audit-Ready:** Policies are written in clean human-readable syntax that non-engineering auditors can review without reading application source code.
+### 2. Live Multi-Source Disaster Telemetry
+Neighbourlink aggregates real-time environmental data from global and regional observation networks:
+- **Seismic Telemetry (USGS):** Ingests live earthquake occurrences with magnitude, depth, coordinates, and epicenter distance calculations.
+- **Global Disaster Alerts (GDACS):** Surfaces tropical cyclones, tsunamis, volcanic activity, and river flood warnings with severity badges (*Advisory*, *Warning*, *Critical*).
+- **Hyperlocal Weather & Air Quality (Open-Meteo):** Displays live temperature, precipitation rates, wind speeds, and the India National Air Quality Index (NAQI) with PM2.5 and PM10 breakdown.
 
 ---
 
-## Writing Crisis Authorization Policies in Cedar
+### 3. Transparent Flood-Risk Simulator (No False Safety)
+Floods are the most common and devastating urban hazard. Neighbourlink includes an experimental rule-based flood risk engine:
+- **Multi-Factor Analysis:** Computes localized flood susceptibility using elevation contours, 24-hour recent precipitation, forecast rain volumes, historical soil saturation, and local drainage capacity.
+- **The "Honest Data" Guarantee:** Most disaster apps fabricate a "Low Risk" green badge when data is missing. Neighbourlink enforces a strict rule: if required meteorological sensors or forecast inputs are unavailable, the system displays **`INSUFFICIENT DATA`**, preventing false senses of security.
 
-In Neighbourlink, we defined three primary entity types:
-- **Principals:** `User::"<id>"` with attributes `{ role: "RESIDENT" | "RESPONDER" | "ADMIN" | "GUEST" }`
-- **Resources:** 
-  - `SOSRequest::"<id>"` with attributes `{ requester: User }`
-  - `Incident::"<id>"` with attributes `{ reporter: User, status: String }`
-  - `Platform::"neighbourlink"`
-- **Actions:** `ViewExactLocation`, `AcknowledgeSOS`, `PostSOSUpdate`, `ResolveSOS`, `CorroborateIncident`, `PublishOfficialHazard`
+---
+
+### 4. Crowdsourced Hazard Reporting with Photo Evidence
+- **Pinpoint Incident Pinning:** Citizens can report localized hazards in seconds (e.g., *Severe Waterlogging*, *Road Cave-in / Landslide*, *Fallen Powerlines / Trees*, *Storm Debris*).
+- **Tamper-Checked Evidence Uploads:** Users attach camera photos with metadata validation. Photos are assigned unique incident tracking codes (e.g., `INC-2026-0042`).
+- **Impact Categorization:** Reports include affected transit modes (vehicles stalling, footpaths submerged, power outage).
+
+---
+
+### 5. Anti-Abuse Community Corroboration & Dispute Management
+A major risk in community-driven emergency apps is rumor propagation and panic. Neighbourlink introduces an independent verification pipeline:
+- **Community Corroboration:** When nearby residents encounter a reported hazard, they can click *"I Also Observed This"*. Once independent observations meet the threshold, the pin automatically upgrades from **UNVERIFIED (Amber)** to **COMMUNITY-CORROBORATED (Blue)**.
+- **Strict Anti-Self-Verification:** Users are strictly blocked from voting on or corroborating their own reports.
+- **Dispute & Resolution Tracking:** If a drain clears or a hazard is resolved, residents can submit a dispute (*"Water drained after municipal pumps turned on"*). The pin transitions to **RESOLVED**, retaining an auditable history rather than vanishing silently.
+
+---
+
+### 6. Emergency SOS Dispatch with Privacy-Preserving Fuzzing
+When disaster strikes and lives are in jeopardy, civilians need an immediate lifeline:
+- **One-Tap SOS Broadcast:** Civilians can broadcast emergency requests across four critical categories: *Trapped in Floodwaters*, *Medical Emergency*, *Evacuation Assistance*, or *Essential Supplies*.
+- **The Dual-Tier Privacy Protection Model:**
+  - **Public Civilian View:** To safeguard vulnerable victims from bad actors or looters, the public map displays only a **soft ~1km fuzzed radius circle** (`fuzzyLatitude`, `fuzzyLongitude`). Contact numbers are completely redacted on the server.
+  - **Verified Responder View:** Authorized disaster rescue units (e.g., SDRF, local rescue NGOs) and platform administrators receive the **unredacted, pinpoint GPS coordinates**, household headcount, and the direct callback telephone number.
+- **Live Operation Pipeline:** Responders acknowledge requests (*"Boat Unit 3 dispatched"*), publish progress updates, and mark cases resolved once citizens are confirmed safe.
+- **Call 112 Hotline Shortcut:** Built-in mobile quick-dial shortcuts to National Emergency response numbers.
+
+---
+
+### 7. Area Watch Subscriptions & Push Notifications
+- **Neighborhood Watchlists:** Users can subscribe to specific wards or neighborhood radiuses (e.g., 5km around their residence or elderly relatives' homes).
+- **Notification Popover & In-App Alert Center:** Real-time bell alerts notify residents when official warnings are published, an SOS is triggered nearby, or an observed hazard status changes.
+
+---
+
+## Part 2: The Security Dilemma — Why Traditional RBAC Fails
+
+Now, let's examine the engineering challenge behind these features.
+
+Consider the rules governing our emergency data:
+- *Responders can view exact SOS coordinates, UNLESS the request is already cancelled.*
+- *Requesters can always see their own SOS request in full, but cannot see exact coordinates of their neighbors.*
+- *Any verified resident can corroborate a hazard, EXCEPT if they are the original reporter.*
+- *Nobody can corroborate an incident if the status is already RESOLVED.*
+
+In typical applications, developers write this in procedural TypeScript:
+
+```typescript
+// ⚠️ Fragile, hardcoded RBAC anti-pattern
+if (
+  (user.role === 'RESPONDER' || user.role === 'ADMIN' || user.id === sos.requesterId) &&
+  sos.status !== 'CANCELLED'
+) {
+  // expose exact location
+}
+```
+
+As features grow, these checks become duplicated across Next.js API routes, server actions, and background workers. When business rules change during an emergency, developers have to hunt down dozens of endpoints. Worse, testing edge cases requires heavy database mocking.
+
+To achieve enterprise-grade security and compliance, we turned to **AWS Cedar**.
+
+---
+
+## Part 3: Decoupling Authorization with AWS Cedar
+
+**AWS Cedar** is an open-source, purpose-built policy language designed for fine-grained authorization. Cedar treats authorization as a first-class citizen:
+
+1. **Deny by Default:** Unless a policy explicitly permits an action, the answer is `DENY`.
+2. **Explicit Forbid Always Wins:** If any policy returns `forbid`, access is denied, even if ten other policies return `permit`.
+3. **Formal Verification:** Cedar policies can be statically analyzed and mathematically proven for correctness using automated reasoning tools.
+
+### Defining Neighbourlink's Policies in Cedar
 
 Here is our live Cedar policy set (`src/authz/policies.ts`):
 
@@ -89,7 +144,7 @@ permit (
 )
 when { principal.role == "RESPONDER" || principal.role == "ADMIN" };
 
-// 2. Requester Self-Access: Citizens always see their own SOS request
+// 2. Requester Self-Access: Citizens always see their own SOS in full
 permit (
   principal,
   action == Action::"ViewExactLocation",
@@ -124,7 +179,7 @@ permit (
   resource is Incident
 );
 
-// 6. Anti-Abuse Rule: No self-corroboration
+// 6. Anti-Abuse Guardrail: Strictly forbid self-corroboration
 forbid (
   principal,
   action == Action::"CorroborateIncident",
@@ -132,7 +187,7 @@ forbid (
 )
 when { resource.reporter == principal };
 
-// 7. Lifecycle Integrity: Resolved incidents cannot be corroborated
+// 7. Lifecycle Guardrail: Cannot corroborate an incident already resolved
 forbid (
   principal,
   action == Action::"CorroborateIncident",
@@ -140,7 +195,7 @@ forbid (
 )
 when { resource.status == "RESOLVED" };
 
-// 8. Official Warnings: Only Admins can publish regional hazards
+// 8. Official Warnings: Only platform Admins can publish regional warnings
 permit (
   principal,
   action == Action::"PublishOfficialHazard",
@@ -149,15 +204,19 @@ permit (
 when { principal.role == "ADMIN" };
 ```
 
-Notice how clean the anti-abuse rules are. Rule #6 (`no-self-corroboration`) forbids a user from verifying their own report, regardless of what permission rule #5 allows.
+Look closely at rules **5, 6, and 7**. 
+- Rule 5 grants broad permission for residents to corroborate incidents.
+- Rules 6 & 7 use Cedar's `forbid` statements. Because `forbid` unconditionally trumps `permit`, no resident can ever game the system by corroborating their own report, regardless of their role.
 
 ---
 
-## Executing Cedar in Next.js Serverless via WebAssembly
+## Part 4: Running Cedar at the Serverless Edge with WebAssembly
 
-Rather than making high-latency network round-trips to an external authorization service for every single map point and coordinate, we packaged the AWS Cedar evaluation engine directly into our Next.js backend using `@cedar-policy/cedar-wasm`.
+In a disaster scenario, latency is lethal. Making network round-trips to an external authorization service for every coordinate on a map creates unacceptable lag.
 
-Here is our authorization adapter (`src/authz/cedar.ts`):
+We solved this by running AWS Cedar **directly in the Next.js Node.js serverless runtime** using `@cedar-policy/cedar-wasm`.
+
+Here is the clean TypeScript adapter (`src/authz/cedar.ts`):
 
 ```typescript
 import { isAuthorized, type CedarValueJson, type EntityJson } from "@cedar-policy/cedar-wasm/nodejs";
@@ -191,6 +250,7 @@ export function authorize(
     { uid: res.uid, attrs: res.attrs, parents: [] },
   ];
 
+  // Evaluate directly in in-memory WebAssembly
   const answer = isAuthorized({
     principal: { type: "User", id: principal.id },
     action: { type: "Action", id: action },
@@ -213,8 +273,8 @@ export function authorize(
 }
 ```
 
-### Next.js 16 Configuration for WASM
-In `next.config.ts`, we ensure Turbopack and the Node server treat `@cedar-policy/cedar-wasm` as an external server package so the underlying `.wasm` binary loads smoothly from disk in serverless runtime:
+### Next.js 16 Configuration
+In `next.config.ts`, we instruct Turbopack and Node to bundle `@cedar-policy/cedar-wasm` as a server-side external package:
 
 ```typescript
 import type { NextConfig } from "next";
@@ -227,11 +287,13 @@ const nextConfig: NextConfig = {
 export default nextConfig;
 ```
 
+Every authorization check takes **under 1 millisecond** in-memory.
+
 ---
 
-## Putting It Together: Dual-Tier Privacy Redaction
+## Part 5: Server-Side Privacy Redaction in Practice
 
-With Cedar in place, our API routes enforce a strict dual-tier data model:
+With Cedar evaluating permissions, our API services enforce privacy automatically before sending bytes over the wire:
 
 ```typescript
 export class SOSService {
@@ -244,7 +306,7 @@ export class SOSService {
     });
 
     return records.map((sos) => {
-      // Ask Cedar whether this viewer is permitted to see exact coordinates
+      // Evaluate exact location permission via Cedar
       const decision = authorize(viewer, "ViewExactLocation", {
         type: "SOSRequest",
         id: sos.id,
@@ -252,7 +314,7 @@ export class SOSService {
       });
 
       if (decision.allowed) {
-        // Full unredacted operational payload for rescue units
+        // Operational payload for authorized rescue units
         return {
           id: sos.id,
           latitude: sos.latitude,
@@ -263,12 +325,12 @@ export class SOSService {
         };
       }
 
-      // Privacy-redacted public payload for civilians (~1km fuzzed grid)
+      // Privacy-redacted public payload for civilians (~1km grid)
       return {
         id: sos.id,
         latitude: sos.fuzzyLatitude,
         longitude: sos.fuzzyLongitude,
-        contactPhone: "[Redacted for civilian security]",
+        contactPhone: "[Redacted for civilian safety]",
         description: sos.description,
         status: sos.status,
       };
@@ -279,9 +341,9 @@ export class SOSService {
 
 ---
 
-## Testing Policy Correctness with Vitest
+## Part 6: Zero-Database Policy Unit Testing
 
-A critical benefit of AWS Cedar is that policies can be tested as pure functions with zero database mocks. We built a comprehensive test suite running under Vitest:
+Because Cedar policies are declarative, they can be tested as pure functions with zero database mocks. Our Vitest test suite (`tests/cedar-policies.test.ts`) verifies every scenario:
 
 ```typescript
 import { describe, it, expect } from "vitest";
@@ -292,13 +354,13 @@ describe("Crisis Cedar Policies", () => {
   const civilian = { id: "u-citizen", role: "RESIDENT" as const };
   const sos = { type: "SOSRequest" as const, id: "sos-1", requesterId: "u-citizen" };
 
-  it("permits responders to see exact coordinates", () => {
+  it("permits verified responders to see exact coordinates", () => {
     const decision = authorize(responder, "ViewExactLocation", sos);
     expect(decision.allowed).toBe(true);
     expect(decision.reasons).toContain("responders-see-exact-sos");
   });
 
-  it("redacts exact coordinates for other residents", () => {
+  it("redacts exact coordinates for other civilians", () => {
     const stranger = { id: "u-stranger", role: "RESIDENT" as const };
     const decision = authorize(stranger, "ViewExactLocation", sos);
     expect(decision.allowed).toBe(false);
@@ -318,34 +380,35 @@ describe("Crisis Cedar Policies", () => {
 });
 ```
 
-Every single assertion executes in less than **2 milliseconds**, providing instant feedback during local development and CI builds.
+All 82 tests run in **less than 1 second**.
 
 ---
 
-## Cloud Deployment Lessons Learned
+## Part 7: AWS Architecture & Production Scaling
 
-When scaling serverless Next.js applications backed by cloud PostgreSQL and AWS services, we encountered three valuable lessons:
+Neighbourlink’s clean domain boundaries allow it to seamlessly map to AWS native services:
 
-1. **Transaction Pooling vs. Session Pooling:**
-   Prisma running in serverless environments exhausts PostgreSQL connection limits rapidly. Connecting via PgBouncer on port `6543` (`?pgbouncer=true`) is essential for high concurrency. However, schema migrations (`prisma db push`) require a direct session connection (port `5432`). Structuring our build scripts to dynamically toggle between the two eliminated cold-start connection crashes.
-2. **Formally Verified Security Brings Peace of Mind:**
-   In an emergency response system, bugs are not just glitches—they are life safety liabilities. Having Cedar’s automated reason diagnostics (`diagnostics.reason`) returned in authorization decisions allowed our UI to present clear, intelligible denial notices to users without leaking database internals.
-3. **WebAssembly Brings Cloud Policies to the Edge:**
-   Running AWS Cedar compiled to WebAssembly inside the Vercel/AWS Lambda serverless container provided the security guarantees of Amazon Verified Permissions with zero latency penalties.
+1. **Amazon Cognito:** User Pools with federated Google OAuth and group claims (`Admins`, `Responders`, `Residents`).
+2. **Amazon S3:** Private disaster photo storage accessed via time-limited presigned PUT/GET URLs (`S3Client`, `getSignedUrl`).
+3. **Amazon SQS & SNS:** SQS decouples background hazard notification jobs, while SNS broadcasts high-urgency SMS alerts for verified life-safety advisories.
+4. **PostgreSQL & PgBouncer:** High-concurrency serverless deployments use Supabase/Aurora PostgreSQL with Transaction Pooling (`:6543`, `?pgbouncer=true`) for Next.js API queries, and Session Pooling (`:5432`) for schema operations.
 
 ---
 
-## Conclusion & Resources
+## Key Takeaways for Cloud Builders
 
-By combining **AWS Cedar** with modern serverless architecture, we built a crisis response platform that is resilient, blazingly fast, and respectful of civilian privacy.
+1. **Separate Policy from Code:** Writing authorization rules in Cedar instead of inline TypeScript made our disaster protocols transparent, audit-ready, and impossible to bypass accidentally.
+2. **WebAssembly Brings Cloud Standards to the Edge:** Using `@cedar-policy/cedar-wasm`, we achieved Amazon Verified Permissions-grade security with local, zero-network evaluation latency.
+3. **Protect Human Privacy by Default:** Humanitarian technology must never compromise the physical safety of the people it seeks to protect. Server-side coordinate fuzzing with Cedar-gated unredaction provides the optimal balance of privacy and emergency speed.
 
-If you are building applications where data sensitivity, multi-role interactions, and audit requirements meet, I strongly recommend exploring AWS Cedar for your authorization needs.
+---
 
-### Helpful Resources:
-- **AWS Cedar Policy Language:** [https://www.cedarpolicy.com](https://www.cedarpolicy.com)
+### Resources & Open Source Code
+
+- **GitHub Repository:** [https://github.com/asry16/Neighbourlink](https://github.com/asry16/Neighbourlink)
+- **AWS Cedar Policy Documentation:** [https://www.cedarpolicy.com](https://www.cedarpolicy.com)
 - **Amazon Verified Permissions:** [https://aws.amazon.com/verified-permissions/](https://aws.amazon.com/verified-permissions/)
-- **Neighbourlink GitHub Repository:** [https://github.com/asry16/Neighbourlink](https://github.com/asry16/Neighbourlink)
 
 ---
 
-*Thank you for reading! Feel free to leave questions in the comments below or connect with me on GitHub.*
+*Thank you for reading! If you are building resilient, community-focused cloud software, feel free to share your thoughts in the comments or contribute on GitHub.*
